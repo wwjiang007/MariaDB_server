@@ -764,7 +764,7 @@ static File_option view_parameters[]=
   my_offsetof(TABLE_LIST, with_check),
   FILE_OPTIONS_ULONGLONG},
  {{ C_STRING_WITH_LEN("timestamp")},
-  my_offsetof(TABLE_LIST, timestamp),
+  my_offsetof(TABLE_LIST, ms_timestamp),
   FILE_OPTIONS_TIMESTAMP},
  {{ C_STRING_WITH_LEN("create-version")},
   my_offsetof(TABLE_LIST, file_version),
@@ -788,6 +788,16 @@ static File_option view_parameters[]=
   FILE_OPTIONS_STRING}
 };
 
+
+static File_option view_timestamp_parameters[]=
+{
+
+ {{ C_STRING_WITH_LEN("timestamp")}, 0, FILE_OPTIONS_TIMESTAMP},
+ {{NullS, 0}, 0, FILE_OPTIONS_STRING}
+};
+
+
+
 static LEX_STRING view_file_type[]= {{(char*) STRING_WITH_LEN("VIEW") }};
 
 
@@ -805,8 +815,8 @@ int mariadb_fix_view(THD *thd, TABLE_LIST *view, bool wrong_checksum,
                      &path, path_buff, sizeof(path_buff),
                      &file, view);
   /* init timestamp */
-  if (!view->timestamp.str)
-    view->timestamp.str= view->timestamp_buffer;
+  if (!view->ms_timestamp.str)
+    view->ms_timestamp.str= view->timestamp_buffer;
 
   if (swap_alg && view->algorithm != VIEW_ALGORITHM_UNDEFINED)
   {
@@ -1006,8 +1016,8 @@ loop_out:
                      &path, path_buff, sizeof(path_buff),
                      &file, view);
   /* init timestamp */
-  if (!view->timestamp.str)
-    view->timestamp.str= view->timestamp_buffer;
+  if (!view->ms_timestamp.str)
+    view->ms_timestamp.str= view->timestamp_buffer;
 
   /* check old .frm */
   {
@@ -1131,7 +1141,31 @@ err:
   DBUG_RETURN(error);
 }
 
+/**
+  Check is TABLE_LEST and SHARE match
+  @param[in]  view                TABLE_LIST of the view
+  @param[in]  share               Share object of view
 
+  @return false on error or misspatch
+*/
+
+bool mariadb_view_version_get(TABLE_SHARE *share)
+{
+  DBUG_ASSERT(share->is_view);
+
+  if (!(share->tabledef_version.str=
+        (uchar*) alloc_root(&share->mem_root,
+                            MICROSECOND_TIMESTAMP_BUFFER_SIZE)))
+    return TRUE;
+
+  DBUG_ASSERT(share->view_def != NULL);
+  if (share->view_def->parse((uchar *) &share->tabledef_version, NULL,
+                             view_timestamp_parameters, 1,
+                             &file_parser_dummy_hook))
+    return TRUE;
+  DBUG_ASSERT(share->tabledef_version.length == MICROSECOND_TIMESTAMP_BUFFER_SIZE-1);
+  return FALSE;
+}
 
 /**
   read VIEW .frm and create structures
@@ -1193,6 +1227,10 @@ bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
     mysql_derived_reinit(thd, NULL, table);
 
     DEBUG_SYNC(thd, "after_cached_view_opened");
+    if (!share->tabledef_version.length)
+    {
+      mariadb_view_version_get(share);
+    }
     DBUG_RETURN(0);
   }
 
@@ -1229,8 +1267,8 @@ bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
   arena= thd->activate_stmt_arena_if_needed(&backup);
 
   /* init timestamp */
-  if (!table->timestamp.str)
-    table->timestamp.str= table->timestamp_buffer;
+  if (!table->ms_timestamp.str)
+    table->ms_timestamp.str= table->timestamp_buffer;
   /* prepare default values for old format */
   table->view_suid= TRUE;
   table->definer.user.str= table->definer.host.str= 0;
@@ -1246,6 +1284,19 @@ bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
                                       required_view_parameters,
                                       &file_parser_dummy_hook)))
     goto end;
+  if (!share->tabledef_version.length)
+  {
+    share->tabledef_version.str= (const uchar *)
+                                 memdup_root(&share->mem_root,
+                                             (const void *)
+                                             table->ms_timestamp.str,
+                                             (share->tabledef_version.length=
+                                              table->ms_timestamp.length));
+  }
+  if (!table->tabledef_version.length)
+  {
+    table->set_view_def_version(&table->ms_timestamp);
+  }
 
   /*
     check old format view .frm
@@ -2151,7 +2202,7 @@ mysql_rename_view(THD *thd,
       object for it.
     */
     view_def.reset();
-    view_def.timestamp.str= view_def.timestamp_buffer;
+    view_def.ms_timestamp.str= view_def.timestamp_buffer;
     view_def.view_suid= TRUE;
 
     /* get view definition and source */

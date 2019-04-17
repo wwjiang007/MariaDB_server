@@ -3607,6 +3607,7 @@ Statement::Statement(LEX *lex_arg, MEM_ROOT *mem_root_arg,
   id(id_arg),
   mark_used_columns(MARK_COLUMNS_READ),
   lex(lex_arg),
+  ms_prepare_time(0),
   db(NULL),
   db_length(0)
 {
@@ -3626,6 +3627,7 @@ void Statement::set_statement(Statement *stmt)
   mark_used_columns=   stmt->mark_used_columns;
   lex=            stmt->lex;
   query_string=   stmt->query_string;
+  ms_prepare_time=    stmt->ms_prepare_time;
 }
 
 
