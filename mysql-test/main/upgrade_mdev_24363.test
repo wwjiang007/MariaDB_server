@@ -33,7 +33,7 @@ use mysql;
 # with "'N' as password_expired" and avoid listing in one more test
 # all the fields of the user view
 set @def = (select view_definition from information_schema.views where table_name='user' and table_schema='mysql');
-set @trimmed_def = (select trim(trailing 'from `mysql`.`global_priv`' from @def));
+set @trimmed_def = (select REGEXP_REPLACE(@def, ' from .*', ''));
 set @newdef = (select concat(@trimmed_def, ", 'N' AS password_expired from mysql.global_priv"));
 set @pos = (select instr(@newdef, 'password_expired'));
 let $viewdef = `select insert(@newdef, @pos, 3, 'abc')`;
