@@ -3679,6 +3679,13 @@ bool subselect_union_engine::is_executed() const
   return unit->executed;
 }
 
+
+int subselect_union_engine::get_identifier()
+{
+  return unit->first_select()->select_number;
+}
+
+
 void subselect_union_engine::force_reexecution()
 { 
   unit->executed= false;
@@ -6872,7 +6879,7 @@ void Item_subselect::init_expr_cache_tracker(THD *thd)
 
   Explain_query *qw= thd->lex->explain;
   DBUG_ASSERT(qw);
-  Explain_node *node= qw->get_node(unit->first_select()->select_number);
+  Explain_node *node= qw->get_node(engine->get_identifier());
   if (!node)
     return;
   DBUG_ASSERT(expr_cache->type() == Item::EXPR_CACHE_ITEM);

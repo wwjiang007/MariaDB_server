@@ -929,6 +929,7 @@ public:
                      bool temp= FALSE);
   bool no_tables();
   bool is_executed() const;
+  int get_identifier();
   void force_reexecution();
   bool no_rows();
   virtual enum_engine_type engine_type() { return UNION_ENGINE; }
