@@ -471,7 +471,7 @@ static bool convert_const_to_int(THD *thd, Item_field *field_item,
     /* Restore the original field value. */
     if (save_field_value)
     {
-      result= field->store(orig_field_val, TRUE);
+      result= field->store(orig_field_val, field_item->unsigned_flag);
       /* orig_field_val must be a valid value that can be restored back. */
       DBUG_ASSERT(!result);
     }

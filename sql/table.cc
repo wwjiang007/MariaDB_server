@@ -1016,6 +1016,7 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
   Virtual_column_info **check_constraint_ptr= table->check_constraints;
   sql_mode_t saved_mode= thd->variables.sql_mode;
   Query_arena backup_arena;
+  Item_change_list change_list_backup;
   Virtual_column_info *vcol= 0;
   StringBuffer<MAX_FIELD_WIDTH> expr_str;
   bool res= 1;
@@ -1039,6 +1040,8 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
 
   thd->set_n_backup_active_arena(table->expr_arena, &backup_arena);
   thd->stmt_arena= table->expr_arena;
+  // see following comment after end: label and near thd->empty_change_list()
+  thd->move_elements_to(&change_list_backup);
   thd->update_charset(&my_charset_utf8mb4_general_ci, table->s->table_charset);
   expr_str.append(&parse_vcol_keyword);
   thd->variables.sql_mode &= ~MODE_NO_BACKSLASH_ESCAPES;
@@ -1167,6 +1170,27 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
 end:
   thd->restore_active_arena(table->expr_arena, &backup_arena);
   thd->stmt_arena= backup_stmt_arena_ptr;
+  /*
+    A cycle of live of Items (expressions) in table is following:
+
+    1) Parsed in the query arena of the table
+    2) Prepared with the permanent query arena of the table be active as a
+    runtime and stmt (permanent) arena (here is difference from usual
+    execution)
+    3) usage (can be sorter of one query live (CREATE TABLE for example) or
+    longer then several queries (SELECT and using table cache), it is not a
+    problem because all fields are local to the table).
+    4) cleanup and deallocate with the TABLE object
+
+    With such live cycle we do not need to rollback temporary changes in
+    this item tree so can just remove them to avoid problem of a try to be
+    rollback with current query (if the cycle was sorter then the query it
+    will lead to changes in freed memory, in the other case it will
+    rollback changes after the first query which will not be redone for
+    the next query).
+  */
+  thd->empty_change_list();
+  change_list_backup.move_elements_to(thd);
   if (save_character_set_client)
     thd->update_charset(save_character_set_client, save_collation);
   thd->variables.sql_mode= saved_mode;
@@ -3104,6 +3128,7 @@ enum open_frm_error open_table_from_share(THD *thd, TABLE_SHARE *share,
   outparam->s= share;
   outparam->db_stat= db_stat;
   outparam->write_row_record= NULL;
+  outparam->status= STATUS_NO_RECORD;
 
   if (share->incompatible_version &&
       !(ha_open_flags & (HA_OPEN_FOR_ALTER | HA_OPEN_FOR_REPAIR)))

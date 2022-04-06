@@ -1342,6 +1342,7 @@ public:
     change_list.move_elements_to(&to->change_list);
   }
   bool is_empty() { return change_list.is_empty(); }
+  void empty_change_list() { change_list.empty(); }
 };
 
 

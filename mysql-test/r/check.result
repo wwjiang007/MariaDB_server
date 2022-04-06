@@ -102,3 +102,37 @@ Note	1091	Can't DROP CONSTRAINT `non_existing_constraint`; check that it exists
 insert into t1 () values ();
 ERROR 23000: CONSTRAINT `CONSTRAINT_1` failed for `test`.`t1`
 drop table t1;
+#
+# MDEV-25638: Assertion `!result' failed in convert_const_to_int 
+#
+CREATE TABLE v0 ( v1 bigint CHECK ( v1 NOT IN ( 'x' , 'x111' ) ) ) ;
+Warnings:
+Warning	1292	Truncated incorrect DOUBLE value: 'x'
+Warning	1292	Truncated incorrect DOUBLE value: 'x111'
+select * from v0;
+v1
+Warnings:
+Warning	1292	Truncated incorrect DOUBLE value: 'x'
+Warning	1292	Truncated incorrect DOUBLE value: 'x111'
+select v1 from v0;
+v1
+select * from v0;
+v1
+prepare stmt from "select * from v0";
+execute stmt;
+v1
+execute stmt;
+v1
+flush tables;
+select * from v0;
+v1
+Warnings:
+Warning	1292	Truncated incorrect DOUBLE value: 'x'
+Warning	1292	Truncated incorrect DOUBLE value: 'x111'
+select * from v0;
+v1
+deallocate prepare stmt;
+drop table v0;
+#
+# End of 10.2 test
+#
