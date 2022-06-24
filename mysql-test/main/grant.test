@@ -1594,6 +1594,7 @@ use test;
 #
 
 call mtr.add_suppression("Can't open and lock privilege tables");
+call mtr.add_suppression("Missing system table mysql.procs_priv");
 
 --echo FLUSH PRIVILEGES without procs_priv table.
 RENAME TABLE mysql.procs_priv TO mysql.procs_gone;

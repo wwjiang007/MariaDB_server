@@ -1036,7 +1036,7 @@ class Tables_priv_table: public Grant_table_base
 
   Tables_priv_table() {};
 
-  void init(enum thr_lock_type lock_type, Grant_table_base *next_table= NULL)
+  void init(enum thr_lock_type lock_type)
   {
     /* We are relying on init_one_table zeroing out the TABLE_LIST structure. */
     LEX_CSTRING MYSQL_TABLES_PRIV_NAME={STRING_WITH_LEN("tables_priv") };
@@ -7420,6 +7420,11 @@ static bool grant_load(THD *thd,
       while (!p_table->file->ha_index_next(p_table->record[0]));
     }
   }
+  else
+  {
+    sql_print_error("Missing system table mysql.procs_priv; "
+                    "please run mysql_upgrade to create it");
+  }
 
 end_unlock_p:
   if (p_table)
@@ -10041,52 +10046,57 @@ static int handle_grant_data(THD *thd, Grant_tables& tables, bool drop,
   }
 
   /* Handle stored routines table. */
-  if ((found= handle_grant_table(thd, tables.procs_priv_table(),
-                                 PROCS_PRIV_TABLE, drop,
-                                 user_from, user_to)) < 0)
+  if (tables.procs_priv_table().table_exists())
   {
-    /* Handle of table failed, don't touch in-memory array. */
-    result= -1;
-  }
-  else
-  {
-    /* Handle procs array. */
-    if ((handle_grant_struct(PROC_PRIVILEGES_HASH, drop, user_from, user_to) || found)
-        && ! result)
+    if ((found= handle_grant_table(thd, tables.procs_priv_table(),
+                                   PROCS_PRIV_TABLE, drop,
+                                   user_from, user_to)) < 0)
     {
-      result= 1; /* At least one record/element found. */
-      /* If search is requested, we do not need to search further. */
-      if (search_only)
-        goto end;
+      /* Handle of table failed, don't touch in-memory array. */
+      result= -1;
     }
-    /* Handle funcs array. */
-    if ((handle_grant_struct(FUNC_PRIVILEGES_HASH, drop, user_from, user_to) || found)
-        && ! result)
+    else
     {
-      result= 1; /* At least one record/element found. */
-      /* If search is requested, we do not need to search further. */
-      if (search_only)
-        goto end;
-    }
-    /* Handle package spec array. */
-    if ((handle_grant_struct(PACKAGE_SPEC_PRIVILEGES_HASH,
-                             drop, user_from, user_to) || found)
-        && ! result)
-    {
-      result= 1; /* At least one record/element found. */
-      /* If search is requested, we do not need to search further. */
-      if (search_only)
-        goto end;
-    }
-    /* Handle package body array. */
-    if ((handle_grant_struct(PACKAGE_BODY_PRIVILEGES_HASH,
-                             drop, user_from, user_to) || found)
-        && ! result)
-    {
-      result= 1; /* At least one record/element found. */
-      /* If search is requested, we do not need to search further. */
-      if (search_only)
-        goto end;
+      /* Handle procs array. */
+      if ((handle_grant_struct(PROC_PRIVILEGES_HASH,
+                               drop, user_from, user_to) || found)
+          && ! result)
+      {
+        result= 1; /* At least one record/element found. */
+        /* If search is requested, we do not need to search further. */
+        if (search_only)
+          goto end;
+      }
+      /* Handle funcs array. */
+      if ((handle_grant_struct(FUNC_PRIVILEGES_HASH, drop,
+                               user_from, user_to) || found)
+          && ! result)
+      {
+        result= 1; /* At least one record/element found. */
+        /* If search is requested, we do not need to search further. */
+        if (search_only)
+          goto end;
+      }
+      /* Handle package spec array. */
+      if ((handle_grant_struct(PACKAGE_SPEC_PRIVILEGES_HASH,
+                               drop, user_from, user_to) || found)
+          && ! result)
+      {
+        result= 1; /* At least one record/element found. */
+        /* If search is requested, we do not need to search further. */
+        if (search_only)
+          goto end;
+      }
+      /* Handle package body array. */
+      if ((handle_grant_struct(PACKAGE_BODY_PRIVILEGES_HASH,
+                               drop, user_from, user_to) || found)
+          && ! result)
+      {
+        result= 1; /* At least one record/element found. */
+        /* If search is requested, we do not need to search further. */
+        if (search_only)
+          goto end;
+      }
     }
   }
 

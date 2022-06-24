@@ -1,0 +1,103 @@
+#
+# MDEV-22133: handle_fatal_signal (sig=11) on optimized builds in
+# handle_grant_table instead of ERROR | Buffer overflow
+# (on optimized builds)
+#
+call mtr.add_suppression("Missing system table mysql.pro");
+call mtr.add_suppression("Missing system table mysql.roles_mapping");
+call mtr.add_suppression("Can't open and lock privilege tables");
+create user b@localhost;
+create table t(a int);
+create procedure p() select 1;
+grant EXECUTE on PROCEDURE test.p to b@localhost;
+GRANT PROXY ON 'root'@'%' TO b@localhost;
+grant SELECT(a) on test.t to b@localhost;
+grant DELETE on test.t to b@localhost;
+grant UPDATE on test.* to b@localhost;
+RENAME TABLE mysql.procs_priv TO mysql.procs_gone;
+CREATE USER a@localhost;
+drop user a@localhost;
+revoke EXECUTE on PROCEDURE test.p from b@localhost;
+ERROR 42S02: Table 'mysql.procs_priv' doesn't exist
+grant EXECUTE on PROCEDURE test.p to b@localhost;
+ERROR 42S02: Table 'mysql.procs_priv' doesn't exist
+flush privileges;
+RENAME TABLE mysql.procs_gone TO mysql.procs_priv;
+flush privileges;
+rename table mysql.proxies_priv to mysql.proxies_gone;
+CREATE USER a@localhost;
+drop user a@localhost;
+REVOKE PROXY ON 'root'@'%' FROM b@localhost;
+ERROR 42S02: Table 'mysql.proxies_priv' doesn't exist
+GRANT PROXY ON 'root'@'%' TO b@localhost;
+ERROR 42S02: Table 'mysql.proxies_priv' doesn't exist
+flush privileges;
+rename table mysql.proxies_gone to mysql.proxies_priv;
+flush privileges;
+rename table mysql.columns_priv to mysql.columns_gone;
+CREATE USER a@localhost;
+ERROR 42S02: Table 'mysql.columns_priv' doesn't exist
+drop user a@localhost;
+ERROR 42S02: Table 'mysql.columns_priv' doesn't exist
+revoke SELECT(a) on test.t from b@localhost;
+ERROR 42S02: Table 'mysql.columns_priv' doesn't exist
+grant SELECT(a) on test.t to b@localhost;
+ERROR 42S02: Table 'mysql.columns_priv' doesn't exist
+flush privileges;
+ERROR 42S02: Table 'mysql.columns_priv' doesn't exist
+rename table mysql.columns_gone to mysql.columns_priv;
+flush privileges;
+rename table mysql.tables_priv to mysql.tables_gone;
+CREATE USER a@localhost;
+ERROR 42S02: Table 'mysql.tables_priv' doesn't exist
+drop user a@localhost;
+ERROR 42S02: Table 'mysql.tables_priv' doesn't exist
+revoke DELETE on test.t from b@localhost;
+ERROR 42S02: Table 'mysql.tables_priv' doesn't exist
+grant DELETE on test.t to b@localhost;
+ERROR 42S02: Table 'mysql.tables_priv' doesn't exist
+flush privileges;
+ERROR 42S02: Table 'mysql.tables_priv' doesn't exist
+rename table mysql.tables_gone to mysql.tables_priv;
+flush privileges;
+rename table mysql.db to mysql.db_gone;
+CREATE USER a@localhost;
+ERROR 42S02: Table 'mysql.db' doesn't exist
+drop user a@localhost;
+ERROR 42S02: Table 'mysql.db' doesn't exist
+revoke UPDATE on test.* from b@localhost;
+ERROR 42S02: Table 'mysql.db' doesn't exist
+grant UPDATE on test.* to b@localhost;
+ERROR 42S02: Table 'mysql.db' doesn't exist
+flush privileges;
+ERROR 42S02: Table 'mysql.db' doesn't exist
+rename table mysql.db_gone to mysql.db;
+flush privileges;
+# Host table silently ignored bacause it can be absent in MySQL
+rename table mysql.host to mysql.host_gone;
+CREATE USER a@localhost;
+drop user a@localhost;
+flush privileges;
+rename table mysql.host_gone to mysql.host;
+flush privileges;
+rename table mysql.roles_mapping to mysql.roles_mapping_gone;
+CREATE USER a@localhost;
+drop user a@localhost;
+flush privileges;
+rename table mysql.roles_mapping_gone to mysql.roles_mapping;
+flush privileges;
+rename table mysql.user to mysql.user_gone;
+CREATE USER a@localhost;
+ERROR 42S02: Table 'mysql.user' doesn't exist
+drop user a@localhost;
+ERROR 42S02: Table 'mysql.user' doesn't exist
+flush privileges;
+ERROR 42S02: Table 'mysql.user' doesn't exist
+rename table mysql.user_gone to mysql.user;
+flush privileges;
+drop user b@localhost;
+drop table t;
+drop procedure p;
+#
+# End of 10.3 tests
+#
