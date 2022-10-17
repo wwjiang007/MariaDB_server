@@ -556,6 +556,7 @@ static inline const char *vcol_type_name(enum_vcol_info_type type)
 #define VCOL_IMPOSSIBLE       32
 #define VCOL_NOT_VIRTUAL      64  /* Function can't be virtual */
 #define VCOL_CHECK_CONSTRAINT_IF_NOT_EXISTS 128
+#define VCOL_IGNORE_DEFAULT   256 /* Ignore while updating defaults */
 
 #define VCOL_NOT_STRICTLY_DETERMINISTIC                       \
   (VCOL_NON_DETERMINISTIC | VCOL_TIME_FUNC | VCOL_SESSION_FUNC)
@@ -1193,7 +1194,7 @@ public:
   {
     bitmap_set_bit(&table->has_value_set, field_index);
   }
-  bool has_explicit_value()
+  bool has_explicit_value() const
   {
     return bitmap_is_set(&table->has_value_set, field_index);
   }
