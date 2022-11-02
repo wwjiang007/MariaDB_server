@@ -4993,6 +4993,7 @@ private:
   unsigned char *m_optional_metadata;
 };
 
+struct Rpl_table_data;
 
 /**
   @class Rows_log_event
@@ -5265,7 +5266,8 @@ protected:
   uint      m_usable_key_parts; /* A number of key_parts suited to lookup */
   bool master_had_triggers;     /* set after tables opening */
 
-  int find_key(); // Find a best key to use in find_row()
+  /** Find a best key to use in find_row() */
+  int find_key(Rpl_table_data *table_data);
   int find_row(rpl_group_info *);
   int write_row(rpl_group_info *, const bool);
   int update_sequence();
@@ -5306,6 +5308,10 @@ protected:
     return (m_table->next_number_field &&
             m_table->next_number_field->field_index >= m_width);
   }
+
+  /** before_row_operations part common for delete and update events */
+  int do_before_lookup_row_operations(const rpl_group_info *rgi,
+                                      Rpl_table_data *table_data);
 #endif
 
 private:
@@ -5331,8 +5337,9 @@ private:
       The member function will return 0 if all went OK, or a non-zero
       error code otherwise.
   */
-  virtual 
-  int do_before_row_operations(const rpl_group_info *rgi) = 0;
+  virtual
+  int do_before_row_operations(const rpl_group_info *rgi,
+                               Rpl_table_data *table_data) = 0;
 
   /*
     Primitive to clean up after a sequence of row executions.
@@ -5423,7 +5430,8 @@ private:
 #endif
 
 #if defined(MYSQL_SERVER) && defined(HAVE_REPLICATION)
-  virtual int do_before_row_operations(const rpl_group_info *);
+  virtual int
+  do_before_row_operations(const rpl_group_info *, Rpl_table_data *table_data);
   virtual int do_after_row_operations(const Slave_reporting_capability *const,int);
   virtual int do_exec_row(rpl_group_info *);
 #endif
@@ -5513,7 +5521,8 @@ protected:
 #endif
 
 #if defined(MYSQL_SERVER) && defined(HAVE_REPLICATION)
-  virtual int do_before_row_operations(const rpl_group_info *rgi);
+  virtual int do_before_row_operations(const rpl_group_info *rgi,
+                                       Rpl_table_data *table_data);
   virtual int do_after_row_operations(const Slave_reporting_capability *const,int);
   virtual int do_exec_row(rpl_group_info *);
 #endif /* defined(MYSQL_SERVER) && defined(HAVE_REPLICATION) */
@@ -5600,7 +5609,8 @@ protected:
 #endif
 
 #if defined(MYSQL_SERVER) && defined(HAVE_REPLICATION)
-  virtual int do_before_row_operations(const rpl_group_info *rgi);
+  virtual int do_before_row_operations(const rpl_group_info *rgi,
+                                       Rpl_table_data *table_data);
   virtual int do_after_row_operations(const Slave_reporting_capability *const,int);
   virtual int do_exec_row(rpl_group_info *);
 #endif
