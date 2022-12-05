@@ -57,7 +57,7 @@ EXPLAIN
       "rows": 1000,
       "filtered": 100,
       "index_condition": "t3.kp1 between 2 and 4 and t3.kp1 MOD 3 = 0",
-      "attached_condition": "t3.kp2 like '%foo%'"
+      "attached_condition": "t3.kp2 like ('%foo%') escape '\\'"
     }
   }
 }

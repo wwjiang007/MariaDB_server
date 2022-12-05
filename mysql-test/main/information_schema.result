@@ -464,8 +464,8 @@ TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	VIEW_DEFINITION	CHECK_OPTION	IS_UPDATABLE	
 def	test	v0	select `information_schema`.`schemata`.`SCHEMA_NAME` AS `c` from `information_schema`.`schemata`	NONE	NO	root@localhost	DEFINER	latin1	latin1_swedish_ci	UNDEFINED
 def	test	v1	select `information_schema`.`tables`.`TABLE_NAME` AS `c` from `information_schema`.`tables` where `information_schema`.`tables`.`TABLE_NAME` = 'v1'	NONE	NO	root@localhost	DEFINER	latin1	latin1_swedish_ci	UNDEFINED
 def	test	v2	select `information_schema`.`columns`.`COLUMN_NAME` AS `c` from `information_schema`.`columns` where `information_schema`.`columns`.`TABLE_NAME` = 'v2'	NONE	NO	root@localhost	DEFINER	latin1	latin1_swedish_ci	UNDEFINED
-def	test	v3	select `information_schema`.`character_sets`.`CHARACTER_SET_NAME` AS `c` from `information_schema`.`character_sets` where `information_schema`.`character_sets`.`CHARACTER_SET_NAME` like 'latin1%'	NONE	NO	root@localhost	DEFINER	latin1	latin1_swedish_ci	UNDEFINED
-def	test	v4	select `information_schema`.`collations`.`COLLATION_NAME` AS `c` from `information_schema`.`collations` where `information_schema`.`collations`.`COLLATION_NAME` like 'latin1%'	NONE	NO	root@localhost	DEFINER	latin1	latin1_swedish_ci	UNDEFINED
+def	test	v3	select `information_schema`.`character_sets`.`CHARACTER_SET_NAME` AS `c` from `information_schema`.`character_sets` where `information_schema`.`character_sets`.`CHARACTER_SET_NAME` like ('latin1%') escape '\\'	NONE	NO	root@localhost	DEFINER	latin1	latin1_swedish_ci	UNDEFINED
+def	test	v4	select `information_schema`.`collations`.`COLLATION_NAME` AS `c` from `information_schema`.`collations` where `information_schema`.`collations`.`COLLATION_NAME` like ('latin1%') escape '\\'	NONE	NO	root@localhost	DEFINER	latin1	latin1_swedish_ci	UNDEFINED
 drop view v0, v1, v2, v3, v4;
 create table t1 (a int);
 grant select,update,insert on t1 to mysqltest_1@localhost;

@@ -1325,11 +1325,11 @@ select 1 between 2 in (3,4) and 5 AS `1 between (2 in (3,4)) and 5`
 create or replace view v1 as select 1 between (2 like 3) and 4;
 Select view_definition from information_schema.views where table_schema='test' and table_name='v1';
 view_definition
-select 1 between 2 like 3 and 4 AS `1 between (2 like 3) and 4`
+select 1 between 2 like (3) escape '\\' and 4 AS `1 between (2 like 3) and 4`
 create or replace view v1 as select 1 not between (2 like 3) and 4;
 Select view_definition from information_schema.views where table_schema='test' and table_name='v1';
 view_definition
-select 1 not between 2 like 3 and 4 AS `1 not between (2 like 3) and 4`
+select 1 not between 2 like (3) escape '\\' and 4 AS `1 not between (2 like 3) and 4`
 drop view v1;
 #
 # Start of 10.2 tests

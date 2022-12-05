@@ -5262,10 +5262,15 @@ void Item_func_like::print(String *str, enum_query_type query_type)
     str->append(STRING_WITH_LEN(" not "));
   str->append(func_name());
   str->append(' ');
-  if (escape_used_in_parsing)
+  if (escape_used_in_parsing || (query_type | QT_VIEW_INTERNAL))
   {
-    args[1]->print_parenthesised(str, query_type, precedence());
-    str->append(STRING_WITH_LEN(" escape "));
+    /*
+      Explicit parencies is workaround against parser bug which üprevent
+      patsing "like 3 in (0,1) escape 3" correctly
+    */
+  str->append('(');
+    args[1]->print(str, query_type);
+    str->append(STRING_WITH_LEN(") escape "));
     escape_item->print_parenthesised(str, query_type, higher_precedence());
   }
   else
@@ -5390,10 +5395,7 @@ bool fix_escape_item(THD *thd, Item *escape_item, String *tmp_str,
     if (escape_str)
     {
       const char *escape_str_ptr= escape_str->ptr();
-      if (escape_used_in_parsing && (
-             (((thd->variables.sql_mode & MODE_NO_BACKSLASH_ESCAPES) &&
-                escape_str->numchars() != 1) ||
-               escape_str->numchars() > 1)))
+      if (escape_used_in_parsing && escape_str->numchars() > 1)
       {
         my_error(ER_WRONG_ARGUMENTS,MYF(0),"ESCAPE");
         return TRUE;

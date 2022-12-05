@@ -315,7 +315,7 @@ SHOW CREATE TABLE t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` char(5) DEFAULT NULL,
-  `v` int(11) GENERATED ALWAYS AS (`a` like 'a%') VIRTUAL,
+  `v` int(11) GENERATED ALWAYS AS (`a` like ('a%') escape '\\') VIRTUAL,
   KEY `v` (`v`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
 DROP TABLE t1;
@@ -324,17 +324,17 @@ SHOW CREATE TABLE t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` char(5) DEFAULT NULL,
-  `v` int(11) GENERATED ALWAYS AS (`a` like NULL) VIRTUAL,
+  `v` int(11) GENERATED ALWAYS AS (`a` like (NULL) escape '\\') VIRTUAL,
   KEY `v` (`v`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
 DROP TABLE t1;
 CREATE TABLE t1 (a CHAR(5), v INT AS (a LIKE 'a') VIRTUAL, KEY(v));
 Warnings:
-Warning	1901	Function or expression '`a` like 'a'' cannot be used in the GENERATED ALWAYS AS clause of `v`
+Warning	1901	Function or expression '`a` like ('a') escape '\\'' cannot be used in the GENERATED ALWAYS AS clause of `v`
 Warning	1105	Expression depends on the @@sql_mode value PAD_CHAR_TO_FULL_LENGTH
 SHOW WARNINGS;
 Level	Code	Message
-Warning	1901	Function or expression '`a` like 'a'' cannot be used in the GENERATED ALWAYS AS clause of `v`
+Warning	1901	Function or expression '`a` like ('a') escape '\\'' cannot be used in the GENERATED ALWAYS AS clause of `v`
 Warning	1105	Expression depends on the @@sql_mode value PAD_CHAR_TO_FULL_LENGTH
 DROP TABLE t1;
 # PAD_CHAR_TO_FULL_LENGTH + LENGTH(char_column) = hard dependency

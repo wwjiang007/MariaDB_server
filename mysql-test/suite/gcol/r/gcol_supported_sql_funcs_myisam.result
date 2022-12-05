@@ -993,7 +993,7 @@ show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` varchar(10) DEFAULT NULL,
-  `b` tinyint(1) GENERATED ALWAYS AS (`a` like 'H%o') VIRTUAL
+  `b` tinyint(1) GENERATED ALWAYS AS (`a` like ('H%o') escape '\\') VIRTUAL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
 insert into t1 values ('Hello',default);
 insert into t1 values ('MySQL',default);
@@ -1108,7 +1108,7 @@ show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` varchar(10) DEFAULT NULL,
-  `b` tinyint(1) GENERATED ALWAYS AS (`a`  not like 'H%o') VIRTUAL
+  `b` tinyint(1) GENERATED ALWAYS AS (`a`  not like ('H%o') escape '\\') VIRTUAL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
 insert into t1 values ('Hello',default);
 insert into t1 values ('MySQL',default);
