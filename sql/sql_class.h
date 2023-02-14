@@ -3900,7 +3900,8 @@ public:
   }
   const Type_handler *type_handler_for_datetime() const;
   bool timestamp_to_TIME(MYSQL_TIME *ltime, my_time_t ts,
-                         ulong sec_part, date_mode_t fuzzydate);
+                         ulong sec_part, date_mode_t fuzzydate,
+                         bool zero_timesteamp_means_zero_datetime);
   inline my_time_t query_start() { return start_time; }
   inline ulong query_start_sec_part()
   { used|= QUERY_START_SEC_PART_USED; return start_time_sec_part; }

@@ -8319,10 +8319,11 @@ Query_arena_stmt::~Query_arena_stmt()
 
 
 bool THD::timestamp_to_TIME(MYSQL_TIME *ltime, my_time_t ts,
-                            ulong sec_part, date_mode_t fuzzydate)
+                            ulong sec_part, date_mode_t fuzzydate,
+                            bool zero_timestamp_means_zero_datetime)
 {
   used|= TIME_ZONE_USED;
-  if (ts == 0 && sec_part == 0)
+  if (ts == 0 && sec_part == 0 && zero_timestamp_means_zero_datetime)
   {
     if (fuzzydate & TIME_NO_ZERO_DATE)
       return 1;

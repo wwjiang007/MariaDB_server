@@ -6380,3 +6380,85 @@ NULL
 SELECT FROM_UNIXTIME(LEAST(3696610869, NULL));
 FROM_UNIXTIME(LEAST(3696610869, NULL))
 NULL
+#
+# MDEV-15751 CURRENT_TIMESTAMP should return a TIMESTAMP [WITH TIME ZONE?]
+#
+CREATE TABLE t1 AS
+SELECT
+current_timestamp(),
+current_timestamp(0),
+current_timestamp(1),
+current_timestamp(2),
+current_timestamp(3),
+current_timestamp(4),
+current_timestamp(5),
+current_timestamp(6);
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `current_timestamp()` timestamp NOT NULL,
+  `current_timestamp(0)` timestamp NOT NULL,
+  `current_timestamp(1)` timestamp(1) NOT NULL,
+  `current_timestamp(2)` timestamp(2) NOT NULL,
+  `current_timestamp(3)` timestamp(3) NOT NULL,
+  `current_timestamp(4)` timestamp(4) NOT NULL,
+  `current_timestamp(5)` timestamp(5) NOT NULL,
+  `current_timestamp(6)` timestamp(6) NOT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+DROP TABLE t1;
+CREATE TABLE t1 AS
+SELECT
+sysdate(),
+sysdate(0),
+sysdate(1),
+sysdate(2),
+sysdate(3),
+sysdate(4),
+sysdate(5),
+sysdate(6);
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `sysdate()` timestamp NOT NULL,
+  `sysdate(0)` timestamp NOT NULL,
+  `sysdate(1)` timestamp(1) NOT NULL,
+  `sysdate(2)` timestamp(2) NOT NULL,
+  `sysdate(3)` timestamp(3) NOT NULL,
+  `sysdate(4)` timestamp(4) NOT NULL,
+  `sysdate(5)` timestamp(5) NOT NULL,
+  `sysdate(6)` timestamp(6) NOT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+DROP TABLE t1;
+CREATE TABLE t1 AS
+SELECT
+from_unixtime(1000000e0),
+from_unixtime(1000000),
+from_unixtime(1000000.1),
+from_unixtime(1000000.12),
+from_unixtime(1000000.123),
+from_unixtime(1000000.1234),
+from_unixtime(1000000.12345),
+from_unixtime(1000000.123456),
+from_unixtime(1000000.1234567),
+from_unixtime(1000000.12345678),
+from_unixtime(1000000.123456789),
+from_unixtime(1000000.1234567891),
+from_unixtime(1000000.12345678912);
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `from_unixtime(1000000e0)` timestamp(6) NULL DEFAULT NULL,
+  `from_unixtime(1000000)` timestamp NULL DEFAULT NULL,
+  `from_unixtime(1000000.1)` timestamp(1) NULL DEFAULT NULL,
+  `from_unixtime(1000000.12)` timestamp(2) NULL DEFAULT NULL,
+  `from_unixtime(1000000.123)` timestamp(3) NULL DEFAULT NULL,
+  `from_unixtime(1000000.1234)` timestamp(4) NULL DEFAULT NULL,
+  `from_unixtime(1000000.12345)` timestamp(5) NULL DEFAULT NULL,
+  `from_unixtime(1000000.123456)` timestamp(6) NULL DEFAULT NULL,
+  `from_unixtime(1000000.1234567)` timestamp(6) NULL DEFAULT NULL,
+  `from_unixtime(1000000.12345678)` timestamp(6) NULL DEFAULT NULL,
+  `from_unixtime(1000000.123456789)` timestamp(6) NULL DEFAULT NULL,
+  `from_unixtime(1000000.1234567891)` timestamp(6) NULL DEFAULT NULL,
+  `from_unixtime(1000000.12345678912)` timestamp(6) NULL DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+DROP TABLE t1;

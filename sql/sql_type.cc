@@ -397,7 +397,11 @@ bool Timestamp::to_native(Native *to, uint decimals) const
 
 bool Timestamp::to_TIME(THD *thd, MYSQL_TIME *to, date_mode_t fuzzydate) const
 {
-  return thd->timestamp_to_TIME(to, tv_sec, tv_usec, fuzzydate);
+  /*
+    Zero timestamp with sec=0, usec=0 means a normal timestamp here,
+    it is not a zero datetime. Hence "false" in the last argument.
+  */
+  return thd->timestamp_to_TIME(to, tv_sec, tv_usec, fuzzydate, false);
 }
 
 

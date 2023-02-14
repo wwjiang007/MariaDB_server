@@ -1547,13 +1547,8 @@ bool Item_func_curdate::get_date(THD *thd, MYSQL_TIME *res,
 
 bool Item_func_curtime::fix_fields(THD *thd, Item **items)
 {
-  if (decimals > TIME_SECOND_PART_DIGITS)
-  {
-    my_error(ER_TOO_BIG_PRECISION, MYF(0),
-             func_name(), TIME_SECOND_PART_DIGITS);
-    return 1;
-  }
-  return Item_timefunc::fix_fields(thd, items);
+  return check_decimal_scale_or_error(TIME_SECOND_PART_DIGITS) ||
+         Item_timefunc::fix_fields(thd, items);
 }
 
 bool Item_func_curtime::get_date(THD *thd, MYSQL_TIME *res,
@@ -1623,12 +1618,8 @@ void Item_func_curtime_utc::store_now_in_TIME(THD *thd, MYSQL_TIME *now_time)
 
 bool Item_func_now::fix_fields(THD *thd, Item **items)
 {
-  if (decimals > TIME_SECOND_PART_DIGITS)
-  {
-    my_error(ER_TOO_BIG_PRECISION, MYF(0),
-             func_name(), TIME_SECOND_PART_DIGITS);
-    return 1;
-  }
+  if (check_decimal_scale_or_error(TIME_SECOND_PART_DIGITS))
+    return true;
   return Item_datetimefunc::fix_fields(thd, items);
 }
 
@@ -1642,32 +1633,10 @@ void Item_func_now::print(String *str, enum_query_type query_type)
 }
 
 
-int Item_func_now_local::save_in_field(Field *field, bool no_conversions)
+bool Item_func_current_timestamp::val_native(THD *thd, Native *to)
 {
-  if (field->type() == MYSQL_TYPE_TIMESTAMP)
-  {
-    THD *thd= field->get_thd();
-    my_time_t ts= thd->query_start();
-    ulong sec_part= decimals ? thd->query_start_sec_part() : 0;
-    sec_part-= my_time_fraction_remainder(sec_part, decimals);
-    field->set_notnull();
-    field->store_timestamp(ts, sec_part);
-    return 0;
-  }
-  else
-    return Item_datetimefunc::save_in_field(field, no_conversions);
-}
-
-
-/**
-    Converts current time in my_time_t to MYSQL_TIME representation for local
-    time zone. Defines time zone (local) used for whole NOW function.
-*/
-void Item_func_now_local::store_now_in_TIME(THD *thd, MYSQL_TIME *now_time)
-{
-  thd->variables.time_zone->gmt_sec_to_TIME(now_time, thd->query_start());
-  set_sec_part(thd->query_start_sec_part(), now_time, this);
-  thd->used|= THD::TIME_ZONE_USED;
+  Timestamp ts(Timeval(thd->query_start(), thd->query_start_sec_part()));
+  return null_value= ts.trunc(decimals).to_native(to, decimals);
 }
 
 
@@ -1705,21 +1674,13 @@ bool Item_func_now::get_date(THD *thd, MYSQL_TIME *res,
     Converts current time in my_time_t to MYSQL_TIME representation for local
     time zone. Defines time zone (local) used for whole SYSDATE function.
 */
-void Item_func_sysdate_local::store_now_in_TIME(THD *thd, MYSQL_TIME *now_time)
+bool Item_func_sysdate_local::val_native(THD *thd, Native *to)
 {
   my_hrtime_t now= my_hrtime();
-  thd->variables.time_zone->gmt_sec_to_TIME(now_time, hrtime_to_my_time(now));
-  set_sec_part(hrtime_sec_part(now), now_time, this);
-  thd->used|= THD::TIME_ZONE_USED;
+  Timestamp ts(Timeval(hrtime_to_my_time(now), hrtime_sec_part(now)));
+  return null_value= ts.trunc(decimals).to_native(to, decimals);
 }
 
-
-bool Item_func_sysdate_local::get_date(THD *thd, MYSQL_TIME *res,
-                                       date_mode_t fuzzydate __attribute__((unused)))
-{
-  store_now_in_TIME(thd, res);
-  return 0;
-}
 
 bool Item_func_sec_to_time::get_date(THD *thd, MYSQL_TIME *ltime, date_mode_t fuzzydate)
 {
@@ -2732,7 +2693,6 @@ null_date:
 
 bool Item_func_from_unixtime::fix_length_and_dec(THD *thd)
 {
-  thd->used|= THD::TIME_ZONE_USED;
   tz= thd->variables.time_zone;
   Type_std_attributes::set(
     Type_temporal_attributes_not_fixed_dec(MAX_DATETIME_WIDTH,
@@ -2743,26 +2703,23 @@ bool Item_func_from_unixtime::fix_length_and_dec(THD *thd)
 }
 
 
-bool Item_func_from_unixtime::get_date(THD *thd, MYSQL_TIME *ltime,
-				       date_mode_t fuzzydate __attribute__((unused)))
+bool Item_func_from_unixtime::val_native(THD *thd, Native *to)
 {
-  bzero((char *)ltime, sizeof(*ltime));
-  ltime->time_type= MYSQL_TIMESTAMP_TIME;
-
   VSec9 sec(thd, args[0], "unixtime", TIMESTAMP_MAX_VALUE);
   DBUG_ASSERT(sec.is_null() || sec.sec() <= TIMESTAMP_MAX_VALUE);
 
   if (sec.is_null() || sec.truncated() || sec.neg())
     return (null_value= 1);
 
-  sec.round(MY_MIN(decimals, TIME_SECOND_PART_DIGITS), thd->temporal_round_mode());
+  // decimals can be NOT_FIXED_DEC
+  decimal_digits_t fixed_decimals= MY_MIN(decimals, TIME_SECOND_PART_DIGITS);
+
+  sec.round(fixed_decimals, thd->temporal_round_mode());
   if (sec.sec() > TIMESTAMP_MAX_VALUE)
     return (null_value= true); // Went out of range after rounding
 
-  tz->gmt_sec_to_TIME(ltime, (my_time_t) sec.sec());
-  ltime->second_part= sec.usec();
-
-  return (null_value= 0);
+  Timestamp ts(Timeval(sec.sec(), sec.usec()));
+  return null_value= ts.to_native(to, fixed_decimals);
 }
 
 

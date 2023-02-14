@@ -5524,7 +5524,11 @@ bool Field_timestamp::get_date(MYSQL_TIME *ltime, date_mode_t fuzzydate)
 {
   ulong sec_part;
   my_time_t ts= get_timestamp(&sec_part);
-  return get_thd()->timestamp_to_TIME(ltime, ts, sec_part, fuzzydate);
+  /*
+    Zero timestamp means zero datetime here.
+    Hence "true" in the last argument.
+  */
+  return get_thd()->timestamp_to_TIME(ltime, ts, sec_part, fuzzydate, true);
 }
 
 

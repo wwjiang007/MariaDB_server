@@ -5381,6 +5381,8 @@ class Item_func_or_sum: public Item_result_field,
                         public Used_tables_and_const_cache
 {
 protected:
+  bool check_decimal_scale_or_error(decimal_digits_t max_allowed_scale) const;
+
   bool agg_arg_charsets(DTCollation &c, Item **items, uint nitems,
                         uint flags, int item_sep)
   {
