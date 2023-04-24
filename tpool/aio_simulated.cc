@@ -148,7 +148,7 @@ public:
     aiocb->m_internal_task.m_arg = aiocb;
     aiocb->m_internal_task.m_group = aiocb->m_group;
     aiocb->m_internal = m_pool;
-    m_pool->submit_task(&aiocb->m_internal_task);
+    m_pool->submit_group_task(&aiocb->m_internal_task);
     return 0;
   }
 

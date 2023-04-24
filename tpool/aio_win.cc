@@ -86,7 +86,7 @@ public:
       aiocb->m_internal_task.m_func = aiocb->m_callback;
       aiocb->m_internal_task.m_arg = aiocb;
       aiocb->m_internal_task.m_group = aiocb->m_group;
-      m_pool->submit_task(&aiocb->m_internal_task);
+      m_pool->submit_group_task(&aiocb->m_internal_task);
     }
   }
 

@@ -80,6 +80,22 @@ namespace tpool
     }
   }
 
+  bool task_group::try_add_task(task *t)
+  {
+    assert(t->m_group == this);
+    if (m_tasks_running != m_max_concurrent_tasks)
+    {
+      /* Max concurrency is not reached yet*/
+      return false;
+    }
+    std::lock_guard<std::mutex> lk(m_mtx);
+    if (m_tasks_running != m_max_concurrent_tasks)
+      return false;
+    t->add_ref();
+    m_queue.push(t);
+    return true;
+  }
+
   task_group::~task_group()
   {
     std::unique_lock<std::mutex> lk(m_mtx);

@@ -73,6 +73,22 @@ public:
   void set_max_tasks(unsigned int max_concurrent_tasks);
   void execute(task* t);
   void cancel_pending(task *t);
+
+  /**
+   Adds task to group's local queue, if max concurrency for
+   the group is reached.
+
+   This is an optimization, that tries to avoid populating global
+   queue, wakeup or possible thread creation, associated with
+   normal submit_task.
+
+   @parameter t - task to add to queue
+   @return true if task was added to queue, false otherwise
+
+   @note We are suppressing TSAN, because of dirty read of m_tasks_running
+   This is fine and not critical, it avoids mutex acquisition.
+  */
+  TPOOL_SUPPRESS_TSAN bool try_add_task(task *t);
   ~task_group();
 };
 
@@ -215,6 +231,11 @@ protected:
 public:
   thread_pool() : m_aio(), m_worker_init_callback(), m_worker_destroy_callback()
   {
+  }
+  void submit_group_task(task *t)
+  {
+    if (!t->m_group->try_add_task(t))
+      submit_task(t);
   }
   virtual void submit_task(task *t)= 0;
   virtual timer* create_timer(callback_func func, void *data=nullptr) = 0;
