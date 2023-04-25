@@ -141,6 +141,11 @@ public:
 static io_slots *read_slots;
 static io_slots *write_slots;
 
+tpool::task_group* os_get_read_slots_task_group()
+{
+  return read_slots->get_task_group();
+}
+
 /** Number of retries for partial I/O's */
 constexpr ulint NUM_RETRIES_ON_PARTIAL_IO = 10;
 

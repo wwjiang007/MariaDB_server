@@ -682,6 +682,9 @@ void buf_load_abort()
   buf_load_abort_flag= true;
 }
 
+
+extern tpool::task_group *os_get_read_slots_task_group();
+
 /*****************************************************************//**
 This is the main task for buffer pool dump/load. when scheduled
 either performs a dump or load, depending on server state, state of the variables etc- */
@@ -694,7 +697,20 @@ static void buf_dump_load_func(void *)
 #ifdef WITH_WSREP
 		if (!get_wsrep_recovery()) {
 #endif /* WITH_WSREP */
+			/* One thread is enough for loading buffer
+			that gives the fastest result (at least for native aio)*/
+			auto group= os_get_read_slots_task_group();
+			//Use 1 thread for read completion handling*/
+			group->set_max_tasks(1);
+			//Don't let thread pool create too many threads
+			//in the following batch
+			srv_thread_pool->set_concurrency(1);
+
 			buf_load();
+
+			/* Restore concurrency for IO and threadpool*/
+			group->set_max_tasks(srv_n_read_io_threads);
+			srv_thread_pool->set_concurrency();
 #ifdef WITH_WSREP
 		}
 #endif /* WITH_WSREP */
