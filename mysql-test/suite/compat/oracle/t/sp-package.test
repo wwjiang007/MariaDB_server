@@ -2,6 +2,7 @@
 
 SET sql_mode=ORACLE;
 
+--disable_ps2_protocol
 
 --echo #
 --echo # Creating a body of a non-existing package
@@ -3016,3 +3017,4 @@ CALL db2.pkg1.p2_db1_pkg1_p1;
 
 DROP DATABASE db1;
 DROP DATABASE db2;
+--enable_ps2_protocol

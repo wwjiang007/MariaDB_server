@@ -22,6 +22,7 @@ flush query cache;
 reset query cache;
 flush status;
 
+--disable_ps2_protocol
 select * from t1;
 
 show status like "Qcache_queries_in_cache";
@@ -51,6 +52,7 @@ select * from performance_schema.setup_timers where name='wait';
 show status like "Qcache_queries_in_cache";
 show status like "Qcache_inserts";
 show status like "Qcache_hits";
+--enable_ps2_protocol
 
 SET GLOBAL query_cache_size=@save_query_cache_size;
 
