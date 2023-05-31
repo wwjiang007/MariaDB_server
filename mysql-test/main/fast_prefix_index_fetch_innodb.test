@@ -25,6 +25,7 @@ insert into prefixinno values (1, 1001, repeat('a', 1)),
 
 select * from prefixinno;
 
+--disable_ps2_protocol
 --echo # Eligible for optimization.
 select id, bigfield from prefixinno where bigfield = repeat('d', 31);
 
@@ -149,6 +150,8 @@ SELECT col1 FROM t1 FORCE INDEX (`idx1`) WHERE col2 is NULL;
 --echo # Not eligible - record length longer than prefix index
 SELECT col1 FROM t1 FORCE INDEX (`idx1`) WHERE col2 like 'test1%';
 
+
+--enable_ps2_protocol
 DROP TABLE t1;
 
 --echo #
