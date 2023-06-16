@@ -87,7 +87,7 @@ protected:
   virtual ~Json_path_extractor() { }
   virtual bool check_and_get_value(Json_engine_scan *je,
                                    String *to, int *error)=0;
-  bool extract(String *to, Item *js, Item *jp, CHARSET_INFO *cs);
+  bool extract(json_engine_t *je, String *to, Item *js, Item *jp, CHARSET_INFO *cs);
 };
 
 
@@ -182,7 +182,6 @@ public:
 class Item_func_json_value: public Item_str_func,
                             public Json_path_extractor
 {
-
 public:
   Item_func_json_value(THD *thd, Item *js, Item *i_path):
     Item_str_func(thd, js, i_path) {}
@@ -194,7 +193,8 @@ public:
   bool fix_length_and_dec(THD *thd) override ;
   String *val_str(String *to) override
   {
-    null_value= Json_path_extractor::extract(to, args[0], args[1],
+    json_engine_t je;
+    null_value= Json_path_extractor::extract(&je, to, args[0], args[1],
                                              collation.collation);
     return null_value ? NULL : to;
   }
@@ -222,7 +222,8 @@ public:
   bool fix_length_and_dec(THD *thd) override;
   String *val_str(String *to) override
   {
-    null_value= Json_path_extractor::extract(to, args[0], args[1],
+    json_engine_t je;
+    null_value= Json_path_extractor::extract(&je, to, args[0], args[1],
                                              collation.collation);
     return null_value ? NULL : to;
   }
@@ -831,9 +832,7 @@ public:
 class Item_func_json_key_value: public Item_json_func,
                             public Json_path_extractor
 {
-
-  String tmp_str;
-
+  String tmp_str, tmp_js;
 public:
   Item_func_json_key_value(THD *thd, Item *js, Item *i_path):
     Item_json_func(thd, js, i_path) {}

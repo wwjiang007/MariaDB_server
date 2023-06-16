@@ -690,7 +690,7 @@ bool Item_func_json_query::fix_length_and_dec(THD *thd)
 }
 
 
-bool Json_path_extractor::extract(String *str, Item *item_js, Item *item_jp,
+bool Json_path_extractor::extract(json_engine_t *je_tmp, String *str, Item *item_js, Item *item_jp,
                                   CHARSET_INFO *cs)
 {
   String *js= item_js->val_json(&tmp_js);
@@ -717,22 +717,26 @@ bool Json_path_extractor::extract(String *str, Item *item_js, Item *item_jp,
   cur_step= p.steps;
 continue_search:
   if (json_find_path(&je, &p, &cur_step, array_counters))
-    return true;
+    goto error_return;
 
   if (json_read_value(&je))
-    return true;
+    goto error_return;
 
   if (je.value_type == JSON_VALUE_NULL)
-    return true;
+    goto error_return;
 
   if (unlikely(check_and_get_value(&je, str, &error)))
   {
     if (error)
-      return true;
+      goto error_return;
     goto continue_search;
   }
 
   return false;
+
+error_return:
+ *je_tmp= je;
+ return true;
 }
 
 
@@ -4934,7 +4938,8 @@ error_return:
 
 String* Item_func_json_key_value::val_str(String *str)
 {
-  json_engine_t je;
+  json_engine_t je, tmp_je;
+  String *tmp= args[0]->val_json(&tmp_js);
 
   if ((null_value= args[0]->null_value) ||
       (null_value= args[1]->null_value))
@@ -4942,23 +4947,27 @@ String* Item_func_json_key_value::val_str(String *str)
     goto return_null;
   }
 
-  null_value= Json_path_extractor::extract(&tmp_str, args[0], args[1],
+  null_value= Json_path_extractor::extract(&tmp_je, &tmp_str, args[0], args[1],
                                              collation.collation);
   if (null_value)
+  {
+    if (tmp_je.s.error)
+      report_json_error(tmp, &tmp_je, 0);
     return NULL;
+  }
 
   json_scan_start(&je, tmp_str.charset(), (const uchar *) tmp_str.ptr(),
                   (const uchar *) tmp_str.ptr() + tmp_str.length());
   if (json_read_value(&je))
   {
-    report_json_error(str, &je, 0);
+    report_json_error(tmp, &je, 0);
     goto return_null;
   }
 
   str->length(0);
   if (get_key_value(&je, str))
   {
-    report_json_error(str, &je, 0);
+    report_json_error(tmp, &je, 0);
     goto return_null;
   }
 
