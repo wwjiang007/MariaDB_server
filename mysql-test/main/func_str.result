@@ -5511,6 +5511,92 @@ NULL
 select hex(aes_decrypt(x'9E6F76516B4DE68FED7A77632FC0913D', 'bar', 'abcdefghabcdefgh', 'aes-128-ctr')) `expected garbage`;
 expected garbage
 98D7BC3151620F384B0A953686AF37C9
+set @@block_encryption_mode=default;
+#
+# MDEV-31474 KDF() function
+#
+select hex(kdf('foo', 'bar'));
+hex(kdf('foo', 'bar'))
+4AFD0088E56CAF7CB5C94F6C101D58D5
+select hex(kdf('foo', 'bar'));
+hex(kdf('foo', 'bar'))
+4AFD0088E56CAF7CB5C94F6C101D58D5
+select hex(kdf('faa', 'bar'));
+hex(kdf('faa', 'bar'))
+DF88BE28B6113AA91F6D4912D39AC13D
+select hex(kdf('foo', 'bor'));
+hex(kdf('foo', 'bor'))
+EFA3DED28F662F2500544B2D285BDA71
+select hex(kdf('foo', 'bar', 'info'));
+hex(kdf('foo', 'bar', 'info'))
+710583081D40A55F0B573A76E02D8975
+select hex(kdf('foo', 'bar', 'infa'));
+hex(kdf('foo', 'bar', 'infa'))
+612875F859CFB4EE0DFEFF9F2A18E836
+select hex(kdf('foo', 'bar', 'info', 'hkdf'));
+hex(kdf('foo', 'bar', 'info', 'hkdf'))
+710583081D40A55F0B573A76E02D8975
+select hex(kdf('foo', 'bar', 'info', 'pbkdf2_hmac'));
+hex(kdf('foo', 'bar', 'info', 'pbkdf2_hmac'))
+DB658012DC3E52AEC1F4933C280B6E10
+Warnings:
+Warning	1292	Truncated incorrect INTEGER value: 'info'
+select hex(kdf('foo', 'bar', 1, 'pbkdf2_hmac'));
+hex(kdf('foo', 'bar', 1, 'pbkdf2_hmac'))
+DB658012DC3E52AEC1F4933C280B6E10
+select hex(kdf('foo', 'bar', 1000, 'pbkdf2_hmac'));
+hex(kdf('foo', 'bar', 1000, 'pbkdf2_hmac'))
+76BA6DEC5C3F6A60704D730A2A4BAA1C
+select hex(kdf('foo', 'bar', 2000, 'pbkdf2_hmac'));
+hex(kdf('foo', 'bar', 2000, 'pbkdf2_hmac'))
+430D4780B57254EF39EE13CE53DB381A
+select hex(kdf(NULL, 'bar'));
+hex(kdf(NULL, 'bar'))
+NULL
+select hex(kdf('foo', NULL));
+hex(kdf('foo', NULL))
+NULL
+select hex(kdf('foo', 'bar', NULL, 'hkdf'));
+hex(kdf('foo', 'bar', NULL, 'hkdf'))
+4AFD0088E56CAF7CB5C94F6C101D58D5
+select hex(kdf('foo', 'bar', NULL, 'pbkdf2_hmac'));
+hex(kdf('foo', 'bar', NULL, 'pbkdf2_hmac'))
+DB658012DC3E52AEC1F4933C280B6E10
+select hex(kdf('foo', 'bar', 2000, NULL));
+hex(kdf('foo', 'bar', 2000, NULL))
+NULL
+select hex(kdf('foo', 'bar', 2000, 'foo'));
+hex(kdf('foo', 'bar', 2000, 'foo'))
+NULL
+select hex(kdf('foo', 'bar', 'info', 'hkdf', NULL));
+hex(kdf('foo', 'bar', 'info', 'hkdf', NULL))
+NULL
+select hex(kdf('foo', 'bar', 'info', 'hkdf', 10));
+hex(kdf('foo', 'bar', 'info', 'hkdf', 10))
+NULL
+select hex(kdf('foo', 'bar', 'info', 'hkdf', 16));
+hex(kdf('foo', 'bar', 'info', 'hkdf', 16))
+7105
+set @@block_encryption_mode='aes-192-cbc';
+select hex(kdf('foo', 'bar', 'info', 'hkdf'));
+hex(kdf('foo', 'bar', 'info', 'hkdf'))
+710583081D40A55F0B573A76E02D8975AA11A4595954C0A1
+select hex(kdf('foo', 'bar', 'info', 'hkdf', 256));
+hex(kdf('foo', 'bar', 'info', 'hkdf', 256))
+710583081D40A55F0B573A76E02D8975AA11A4595954C0A1487D6D33ABAB93C3
+select hex(kdf('foo', 'bar', 2000, 'pbkdf2_hmac'));
+hex(kdf('foo', 'bar', 2000, 'pbkdf2_hmac'))
+430D4780B57254EF39EE13CE53DB381A552151AA62A9FA92
+select hex(kdf('foo', 'bar', 2000, 'pbkdf2_hmac', 256));
+hex(kdf('foo', 'bar', 2000, 'pbkdf2_hmac', 256))
+430D4780B57254EF39EE13CE53DB381A552151AA62A9FA922B9949DF270AE10C
+set @key=kdf('password', 'salt', 2048, 'pbkdf2_hmac');
+select hex(aes_encrypt('secret', @key, '1234123412341234'));
+hex(aes_encrypt('secret', @key, '1234123412341234'))
+9EED553CDDEE426D5635EF559E015ECA
+select aes_decrypt(x'9EED553CDDEE426D5635EF559E015ECA', @key, '1234123412341234');
+aes_decrypt(x'9EED553CDDEE426D5635EF559E015ECA', @key, '1234123412341234')
+secret
 #
 # End of 11.2 tests
 #
