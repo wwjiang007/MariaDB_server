@@ -236,6 +236,9 @@ static void inline slave_rows_error_report(enum loglevel level, int ha_error,
   */
   if (is_parallel_retry_error(rgi, errcode))
     return;
+  /* Similarly for STOP SLAVE FORCE. */
+  if (rli->stop_slave_force && errcode == ER_PRIOR_COMMIT_FAILED)
+    return;
 
   for (err= it++, slider= buff; err && slider < buff_end - 1;
        slider += len, err= it++)
@@ -8147,7 +8150,6 @@ Gtid_log_event::do_apply_event(rpl_group_info *rgi)
   thd->variables.server_id= this->server_id;
   thd->variables.gtid_domain_id= this->domain_id;
   thd->variables.gtid_seq_no= this->seq_no;
-  rgi->gtid_ev_flags2= flags2;
   thd->reset_for_next_command();
 
   if (opt_gtid_strict_mode && opt_bin_log && opt_log_slave_updates)
@@ -11303,6 +11305,32 @@ inline void restore_empty_query_table_list(LEX *lex)
 }
 
 
+/* Abort this row event immediately in case of STOP SLAVE FORCE. */
+static int check_force_stop(THD *thd, rpl_group_info *rgi,
+                            const Relay_log_info *rli, bool is_parallel)
+{
+  if (is_parallel)
+  {
+    if (check_parallel_force_stop(rgi->parallel_entry, rgi))
+    {
+      // check_parallel_force_stop() does my_error(ER_PRIOR_COMMIT_FAILED).
+      return ER_PRIOR_COMMIT_FAILED;
+    }
+  }
+  else
+  {
+    if (rli->abort_slave &&
+        rli->stop_slave_force &&
+        !has_non_abortable_trans(thd, rli))
+    {
+      my_error(ER_PRIOR_COMMIT_FAILED, MYF(0));
+      return ER_PRIOR_COMMIT_FAILED;
+    }
+  }
+
+  return 0;
+}
+
 int Rows_log_event::do_apply_event(rpl_group_info *rgi)
 {
   Relay_log_info const *rli= rgi->rli;
@@ -11667,6 +11695,7 @@ int Rows_log_event::do_apply_event(rpl_group_info *rgi)
      */
     rgi->set_row_stmt_start_timestamp();
 
+    bool is_parallel= rli->mi->using_parallel();
     THD_STAGE_INFO(thd, stage_executing);
     do
     {
@@ -11675,7 +11704,18 @@ int Rows_log_event::do_apply_event(rpl_group_info *rgi)
       if (!table->in_use)
         table->in_use= thd;
 
-      error= do_exec_row(rgi);
+      error= check_force_stop(thd, rgi, rli, is_parallel);
+      if (likely(!error))
+        error= do_exec_row(rgi);
+
+      DBUG_EXECUTE_IF(
+        "pause_after_next_row_exec",
+        {
+          DBUG_ASSERT(!debug_sync_set_action(
+              thd,
+              STRING_WITH_LEN(
+                  "now SIGNAL row_executed WAIT_FOR continue_row_execution")));
+        });
 
       if (unlikely(error))
         DBUG_PRINT("info", ("error: %s", HA_ERR(error)));

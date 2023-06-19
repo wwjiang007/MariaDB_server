@@ -305,6 +305,12 @@ public:
   */
   volatile bool inited;
   volatile bool abort_slave;
+  /*
+    If abort_slave is set, stop_slave_force indicates STOP SLAVE ... FORCE,
+    where we try to stop faster by rolling back active transactions and
+    row-operations.
+  */
+  volatile bool stop_slave_force;
   volatile bool stop_for_until;
   volatile uint slave_running;
 

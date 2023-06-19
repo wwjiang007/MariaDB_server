@@ -8759,14 +8759,14 @@ slave:
             /* If you change this code don't forget to update STOP SLAVE too */
           }
           {}
-        | STOP_SYM SLAVE optional_connection_name slave_thread_opts
+        | STOP_SYM SLAVE optional_connection_name slave_thread_opts slave_stop_force_opt
           {
             LEX *lex=Lex;
             lex->sql_command = SQLCOM_SLAVE_STOP;
             lex->type = 0;
             /* If you change this code don't forget to update SLAVE STOP too */
           }
-        | STOP_SYM ALL SLAVES slave_thread_opts
+        | STOP_SYM ALL SLAVES slave_thread_opts slave_stop_force_opt
           {
             LEX *lex=Lex;
             lex->sql_command = SQLCOM_SLAVE_ALL_STOP;
@@ -8844,6 +8844,11 @@ slave_thread_opt:
         | SQL_THREAD   { Lex->slave_thd_opt|=SLAVE_SQL; }
         | RELAY_THREAD { Lex->slave_thd_opt|=SLAVE_IO; }
         ;
+
+slave_stop_force_opt:
+	  /*empty*/ {}
+	| FORCE_SYM { Lex->slave_thd_opt|= SLAVE_STOP_FORCE; }
+	;
 
 slave_until:
           /*empty*/ {}

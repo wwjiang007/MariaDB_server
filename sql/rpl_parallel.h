@@ -272,13 +272,13 @@ struct rpl_parallel_entry {
   uint64 last_commit_id;
   bool active;
   /*
-    Set when SQL thread is shutting down, and no more events can be processed,
-    so worker threads must force abort any current transactions without
-    waiting for event groups to complete.
+    Set when SQL thread is shutting down. It is sometimes read without
+    holding LOCK_parallel_entry (and in that case must be accessed with
+    acquire sematics).
   */
-  bool force_abort;
+  std::atomic<bool> slave_stopping;
   /*
-   At STOP SLAVE (force_abort=true), we do not want to process all events in
+   At STOP SLAVE (slave_stopping=true), we do not want to process all events in
    the queue (which could unnecessarily delay stop, if a lot of events happen
    to be queued). The stop_sub_id provides a safe point at which to stop, so
    that everything before becomes committed and nothing after does. The value
@@ -326,6 +326,13 @@ struct rpl_parallel_entry {
     transactions with smaller sub_id have started).
   */
   uint64 largest_started_sub_id;
+  /*
+    The largest sub_id of a non-transactional event group that has started
+    (one that cannot roll back). STOP SLAVE FORCE will try to roll back active
+    transactions, but will not try to do so before this point.
+  */
+  uint64 unsafe_rollback_marker_sub_id;
+
   rpl_group_info *current_group_info;
   /*
     If we get an error in some event group, we set the sub_id of that event
@@ -378,6 +385,7 @@ struct rpl_parallel {
 extern struct rpl_parallel_thread_pool global_rpl_thread_pool;
 
 
+extern bool check_parallel_force_stop(rpl_parallel_entry *entry, rpl_group_info *rgi);
 extern int rpl_parallel_resize_pool_if_no_slaves(void);
 extern int rpl_parallel_activate_pool(rpl_parallel_thread_pool *pool);
 extern int rpl_parallel_inactivate_pool(rpl_parallel_thread_pool *pool);

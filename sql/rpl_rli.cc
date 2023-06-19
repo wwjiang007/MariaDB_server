@@ -58,7 +58,8 @@ Relay_log_info::Relay_log_info(bool is_slave_recovery)
    group_master_log_pos(0), log_space_total(0), ignore_log_space_limit(0),
    last_master_timestamp(0), sql_thread_caught_up(true), slave_skip_counter(0),
    abort_pos_wait(0), slave_run_id(0), sql_driver_thd(),
-   gtid_skip_flag(GTID_SKIP_NOT), inited(0), abort_slave(0), stop_for_until(0),
+   gtid_skip_flag(GTID_SKIP_NOT), inited(0), abort_slave(0),
+   stop_slave_force(false), stop_for_until(0),
    slave_running(MYSQL_SLAVE_NOT_RUN), until_condition(UNTIL_NONE),
    until_log_pos(0), retried_trans(0), executed_entries(0),
    sql_delay(0), sql_delay_end(0),
@@ -2188,6 +2189,7 @@ event_group_new_gtid(rpl_group_info *rgi, Gtid_log_event *gev)
   rgi->current_gtid.server_id= gev->server_id;
   rgi->current_gtid.seq_no= gev->seq_no;
   rgi->commit_id= gev->commit_id;
+  rgi->gtid_ev_flags2= gev->flags2;
   rgi->gtid_pending= true;
   return 0;
 }

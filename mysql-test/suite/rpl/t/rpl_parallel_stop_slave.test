@@ -1,0 +1,94 @@
+--source include/have_innodb.inc
+--source include/have_binlog_format_mixed.inc
+--source include/master-slave.inc
+
+--let $rpl_connection_name= slave2
+--let $rpl_server_number= 2
+--source include/rpl_connect.inc
+
+--connection slave
+--source include/stop_slave.inc
+SET @old_parallel_threads= @@GLOBAL.slave_parallel_threads;
+SET GLOBAL slave_parallel_threads=3;
+SET @old_parallel_mode= @@GLOBAL.slave_parallel_mode;
+SET GLOBAL slave_parallel_mode=optimistic;
+CHANGE MASTER TO master_use_gtid=slave_pos;
+--source include/start_slave.inc
+
+--connection master
+ALTER TABLE mysql.gtid_slave_pos ENGINE=InnoDB;
+CREATE TABLE t1 (a INT PRIMARY KEY, b INT) ENGINE=InnoDB;
+INSERT INTO t1 VALUES (1,0), (2,0), (3,0);
+--source include/save_master_gtid.inc
+
+--connection slave
+--source include/sync_with_master_gtid.inc
+--source include/stop_slave.inc
+
+--connection slave1
+# Create a row lock to pause the slave at a specific point.
+BEGIN;
+UPDATE t1 SET b=b+1 WHERE a=3;
+
+--connection slave
+--source include/start_slave.inc
+
+--connection master
+UPDATE t1 SET b=b+2 WHERE a=3;
+INSERT INTO t1 VALUES (4, 0);
+INSERT INTO t1 VALUES (5, 0);
+SELECT COUNT(*) FROM t1;
+
+# Now make a lot of extra events that can be queued up.
+# We want to check that the slave stops early, not trying to apply
+# first all queued events.
+
+--let $gtid_pos= `SELECT @@gtid_binlog_pos`
+--disable_query_log
+--let $i= 100
+while ($i > 0) {
+  eval INSERT INTO t1 VALUES (200-$i, $i);
+  --dec $i
+}
+--enable_query_log
+SELECT COUNT(*) FROM t1;
+
+--connection slave
+# Wait until everything is queued up.
+--let $wait_condition= SELECT count(*)=1 FROM information_schema.processlist WHERE state="Updating" AND info="UPDATE t1 SET b=b+2 WHERE a=3" AND command LIKE "Slave_worker";
+--source include/wait_condition.inc
+--let $wait_condition= SELECT count(*)=2 FROM information_schema.processlist WHERE state="Waiting for prior transaction to commit" AND command LIKE "Slave_worker";
+--source include/wait_condition.inc
+
+--connection slave2
+send STOP SLAVE;
+
+--connection slave
+# Wait for the STOP SLAVE to have its chance to stop things early.
+--let $wait_condition= SELECT count(*)=1 FROM information_schema.processlist WHERE state="Waiting for worker threads to stop";
+--source include/wait_condition.inc
+
+--connection slave1
+ROLLBACK;
+
+--connection slave2
+reap;
+
+--connection slave
+--source include/wait_for_slave_to_stop.inc
+
+let $result=`
+  SELECT IF(@@GLOBAL.gtid_slave_pos="$gtid_pos", "Ok",
+            CONCAT("NOT ok, expected $gtid_pos, but got ", @@GLOBAL.gtid_slave_pos))`;
+eval SELECT "$result" as `Stop position correct?`;
+SELECT COUNT(*) FROM t1;
+
+# Clean up.
+SET GLOBAL slave_parallel_threads= @old_parallel_threads;
+SET GLOBAL slave_parallel_mode= @old_parallel_mode;
+--source include/start_slave.inc
+
+--connection master
+DROP TABLE t1;
+
+--source include/rpl_end.inc

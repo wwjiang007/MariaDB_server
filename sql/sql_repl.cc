@@ -3335,8 +3335,11 @@ int stop_slave(THD* thd, Master_info* mi, bool net_report )
     was stopped (as we don't wan't to touch the other thread), so set the
     bit to 0 for the other thread
   */
-  if (thd->lex->slave_thd_opt)
+  if (thd->lex->slave_thd_opt & (SLAVE_IO|SLAVE_SQL))
     thread_mask &= thd->lex->slave_thd_opt;
+  /* Handle STOP SLAVE ... FORCE. */
+  if (thd->lex->slave_thd_opt & SLAVE_STOP_FORCE)
+    thread_mask |= SLAVE_STOP_FORCE;
 
   if (thread_mask)
   {

@@ -99,7 +99,7 @@ handle_queued_pos_update(THD *thd, rpl_parallel_thread::queued_event *qev)
   rli= qev->rgi->rli;
   e= qev->entry_for_queued;
   if (e->stop_on_error_sub_id < (uint64)ULONGLONG_MAX ||
-      (e->force_abort && !rli->stop_for_until))
+      (e->slave_stopping.load(std::memory_order_acquire) && !rli->stop_for_until))
     return;
 
   mysql_mutex_lock(&rli->data_lock);
@@ -314,6 +314,36 @@ finish_event_group(rpl_parallel_thread *rpt, uint64 sub_id,
 }
 
 
+bool
+check_parallel_force_stop(rpl_parallel_entry *entry, rpl_group_info *rgi)
+{
+  if (likely(!entry->slave_stopping.load(std::memory_order_acquire)) ||
+      !(rgi->rli->stop_slave_force))
+    return false;
+
+  bool res= false;
+  mysql_mutex_lock(&entry->LOCK_parallel_entry);
+  if (rgi->gtid_sub_id > entry->unsafe_rollback_marker_sub_id)
+  {
+    /*
+      No later non-transactional event group has started yet, it is safe to
+      abort and roll back this (and thereby any later) event group for STOP
+      SLAVE FORCE. Any non-transactional event group that has not yet started
+      will see the stop in progress and not try to start.
+
+      We throw an ER_PRIOR_COMMIT_FAILED error, so that STOP SLAVE FORCE can
+      share the code path with error stop, and for consistency with later
+      transactions that have reached the commit point and will fail with this
+      error (from wait_for_prior_commit()) as well.
+    */;
+    my_error(ER_PRIOR_COMMIT_FAILED, MYF(0));
+    res= true;
+  }
+  mysql_mutex_unlock(&entry->LOCK_parallel_entry);
+
+  return res;
+}
+
 static void
 signal_error_to_sql_driver_thread(THD *thd, rpl_group_info *rgi, int err)
 {
@@ -429,10 +459,12 @@ do_stop_handling(rpl_group_info *rgi)
 {
   bool should_stop= false;
   rpl_parallel_entry *entry=  rgi->parallel_entry;
+  uint64 sub_id= rgi->gtid_sub_id;
 
   mysql_mutex_assert_owner(&entry->LOCK_parallel_entry);
 
-  if (unlikely(entry->force_abort) && rgi->gtid_sub_id > entry->stop_sub_id)
+  if (unlikely(entry->slave_stopping.load(std::memory_order_relaxed)) &&
+      sub_id > entry->stop_sub_id)
   {
     /*
       We are stopping (STOP SLAVE), and this event group need not be applied
@@ -455,8 +487,16 @@ do_stop_handling(rpl_group_info *rgi)
       Since we did not decide to stop, bump the largest_started_sub_id while
       still holding LOCK_parallel_entry.
     */
-    if (rgi->gtid_sub_id > entry->largest_started_sub_id)
-      entry->largest_started_sub_id= rgi->gtid_sub_id;
+    if (sub_id > entry->largest_started_sub_id)
+      entry->largest_started_sub_id= sub_id;
+
+    /*
+      If we start on a non-transactional group, we cannot roll back past this
+      point for STOP SLAVE ... FORCE.
+    */
+    if (!(rgi->gtid_ev_flags2 & Gtid_log_event::FL_TRANSACTIONAL) &&
+        entry->unsafe_rollback_marker_sub_id < sub_id)
+      entry->unsafe_rollback_marker_sub_id= sub_id;
   }
 
   return should_stop;
@@ -492,7 +532,8 @@ do_ftwrl_wait(rpl_group_info *rgi,
     thd->set_time_for_next_stage();
     do
     {
-      if (entry->force_abort || rgi->worker_error)
+      if (entry->slave_stopping.load(std::memory_order_relaxed) ||
+          rgi->worker_error)
       {
         aborted= true;
         break;
@@ -612,10 +653,10 @@ rpl_unpause_after_ftwrl(THD *thd)
     rpt->pause_for_ftwrl = false;
     mysql_mutex_unlock(&rpt->LOCK_rpl_thread);
     /*
-      Do not change pause_sub_id if force_abort is set.
-      force_abort is set in case of STOP SLAVE.
+      Do not change pause_sub_id if slave_stopping is set.
+      slave_stopping is set in case of STOP SLAVE.
 
-      Reason: If pause_sub_id is not changed and force_abort_is set,
+      Reason: If pause_sub_id is not changed and slave_stopping is set,
       any parallel slave thread waiting in do_ftwrl_wait() will
       on wakeup return from do_ftwrl_wait() with 1. This will set
       skip_event_group to 1 in handle_rpl_parallel_thread() and the
@@ -625,7 +666,7 @@ rpl_unpause_after_ftwrl(THD *thd)
       would continue to execute the transaction in the queue, which would
       cause some transactions to be lost.
     */
-    if (!e->force_abort)
+    if (!e->slave_stopping.load(std::memory_order_relaxed))
       e->pause_sub_id= (uint64)ULONGLONG_MAX;
     mysql_cond_broadcast(&e->COND_parallel_entry);
     mysql_mutex_unlock(&e->LOCK_parallel_entry);
@@ -1087,6 +1128,11 @@ do_retry:
       err= 1;
       goto err;
     }
+    if (check_parallel_force_stop(entry, rgi))
+    {
+      err= 1;
+      goto err;
+    }
     if (is_group_ending(ev, event_type) == 1)
       rgi->mark_start_commit();
 
@@ -1222,12 +1268,13 @@ handle_rpl_parallel_thread(void *arg)
          to release ourself to the thread pool
        - SQL thread is stopping, and we have an owner but no events, and we are
          inside an event group; no more events will be queued to us, so we need
-         to abort the group (force_abort==1).
+         to abort the group (slave_stopping==1).
        - Thread pool shutdown (rpt->stop==1).
     */
     while (!( (events= rpt->event_queue) ||
               (rpt->current_owner && !in_event_group) ||
-              (rpt->current_owner && group_rgi->parallel_entry->force_abort) ||
+              ( rpt->current_owner &&
+                group_rgi->parallel_entry->slave_stopping.load(std::memory_order_acquire)) ||
               rpt->stop))
     {
       if (!wait_count++)
@@ -1455,6 +1502,12 @@ handle_rpl_parallel_thread(void *arg)
             thd->send_kill_message();
             err= 1;
           }
+          else if (check_parallel_force_stop(entry, rgi))
+          {
+            /* STOP SLAVE FORCE, we abort the current transaction. */
+            skip_event_group= true;
+            err= 1;
+          }
           else
             err= rpt_handle_event(qev, rpt);
         }
@@ -1465,7 +1518,17 @@ handle_rpl_parallel_thread(void *arg)
         {
           convert_kill_to_deadlock_error(rgi);
           if (has_temporary_error(thd) && slave_trans_retries > 0)
-            err= retry_event_group(rgi, rpt, qev);
+          {
+            /*
+              Do an extra check for STOP SLAVE FORCE here. It is also checked
+              in retry_event_count() before each event, but this way we avoid
+              the whole retry logic during STOP SLAVE FORCE.
+            */
+            if (check_parallel_force_stop(entry, rgi))
+              skip_event_group= true;
+            else
+              err= retry_event_group(rgi, rpt, qev);
+          }
         }
       }
       else
@@ -1525,7 +1588,8 @@ handle_rpl_parallel_thread(void *arg)
 
     rpt->inuse_relaylog_refcount_update();
 
-    if (in_event_group && group_rgi->parallel_entry->force_abort)
+    if (in_event_group &&
+        group_rgi->parallel_entry->slave_stopping.load(std::memory_order_acquire))
     {
       /*
         We are asked to abort, without getting the remaining events in the
@@ -1573,7 +1637,7 @@ handle_rpl_parallel_thread(void *arg)
       rpt->current_owner= NULL;
       /* Tell wait_for_done() that we are done, if it is waiting. */
       if (likely(rpt->current_entry) &&
-          unlikely(rpt->current_entry->force_abort))
+          unlikely(rpt->current_entry->slave_stopping.load(std::memory_order_acquire)))
         mysql_cond_broadcast(&rpt->COND_rpl_thread_stop);
 
       rpt->current_entry= NULL;
@@ -2400,7 +2464,7 @@ rpl_parallel::find(uint32 domain_id)
     }
   }
   else
-    e->force_abort= false;
+    e->slave_stopping.store(false, std::memory_order_relaxed);
 
   return e;
 }
@@ -2417,6 +2481,7 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
   struct rpl_parallel_entry *e;
   rpl_parallel_thread *rpt;
   uint32 i, j;
+  PSI_stage_info old_stage;
 
   /*
     First signal all workers that they must force quit; no more events will
@@ -2444,7 +2509,7 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
       If we stop due to reaching the START SLAVE UNTIL condition, then we
       need to continue executing any queued events up to that point.
     */
-    e->force_abort= true;
+    e->slave_stopping.store(true, std::memory_order_relaxed);
     e->stop_sub_id= rli->stop_for_until ?
       e->current_sub_id : e->largest_started_sub_id;
     mysql_mutex_unlock(&e->LOCK_parallel_entry);
@@ -2475,9 +2540,11 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
       if ((rpt= e->rpl_threads[j]))
       {
         mysql_mutex_lock(&rpt->LOCK_rpl_thread);
+        thd->ENTER_COND(&rpt->COND_rpl_thread_stop, &rpt->LOCK_rpl_thread,
+                        &stage_waiting_for_worker_stop, &old_stage);
         while (rpt->current_owner == &e->rpl_threads[j])
           mysql_cond_wait(&rpt->COND_rpl_thread_stop, &rpt->LOCK_rpl_thread);
-        mysql_mutex_unlock(&rpt->LOCK_rpl_thread);
+        thd->EXIT_COND(&old_stage);
       }
     }
   }
@@ -2501,7 +2568,7 @@ rpl_parallel::stop_during_until()
   {
     e= (struct rpl_parallel_entry *)my_hash_element(&domain_hash, i);
     mysql_mutex_lock(&e->LOCK_parallel_entry);
-    if (e->force_abort)
+    if (e->slave_stopping.load(std::memory_order_relaxed))
       e->stop_sub_id= e->largest_started_sub_id;
     mysql_mutex_unlock(&e->LOCK_parallel_entry);
   }

@@ -937,7 +937,11 @@ int terminate_slave_threads(Master_info* mi,int thread_mask,bool skip_lock)
       mi->rli.parallel.stop_during_until();
     }
     else
+    {
       mi->rli.abort_slave=1;
+      if (thread_mask & SLAVE_STOP_FORCE)
+        mi->rli.stop_slave_force= true;
+    }
     if (unlikely((error= terminate_slave_thread(mi->rli.sql_driver_thd,
                                                 sql_lock,
                                                 &mi->rli.stop_cond,
@@ -1363,25 +1367,7 @@ static bool sql_slave_killed(rpl_group_info *rgi)
   DBUG_ASSERT(rli->slave_running == 1);// tracking buffer overrun
   if (rli->sql_driver_thd->killed || rli->abort_slave)
   {
-    /*
-      The transaction should always be binlogged if OPTION_KEEP_LOG is
-      set (it implies that something can not be rolled back). And such
-      case should be regarded similarly as modifing a
-      non-transactional table because retrying of the transaction will
-      lead to an error or inconsistency as well.
-
-      Example: OPTION_KEEP_LOG is set if a temporary table is created
-      or dropped.
-
-      Note that transaction.all.modified_non_trans_table may be 1
-      if last statement was a single row transaction without begin/end.
-      Testing this flag must always be done in connection with
-      rli->is_in_group().
-    */
-
-    if ((thd->transaction.all.modified_non_trans_table ||
-         (thd->variables.option_bits & OPTION_KEEP_LOG)) &&
-        rli->is_in_group())
+    if (has_non_abortable_trans(thd, rli))
     {
       char msg_stopped[]=
         "... Slave SQL Thread stopped with incomplete event group "
@@ -3619,6 +3605,34 @@ static ulong read_event(MYSQL* mysql, Master_info *mi, bool* suppress_warnings,
 
 
 /**
+  Check if there is a currently active event group that cannot be safely rolled
+  back for faster STOP SLAVE.
+*/
+bool
+has_non_abortable_trans(THD *thd, const Relay_log_info *rli)
+{
+  /*
+    The transaction should always be binlogged if OPTION_KEEP_LOG is
+    set (it implies that something can not be rolled back). And such
+    case should be regarded similarly as modifing a
+    non-transactional table because retrying of the transaction will
+    lead to an error or inconsistency as well.
+
+    Example: OPTION_KEEP_LOG is set if a temporary table is created
+    or dropped.
+
+    Note that transaction.all.modified_non_trans_table may be 1
+    if last statement was a single row transaction without begin/end.
+    Testing this flag must always be done in connection with
+    rli->is_in_group().
+  */
+  return (thd->transaction.all.modified_non_trans_table ||
+          (thd->variables.option_bits & OPTION_KEEP_LOG)) &&
+         rli->is_in_group();
+}
+
+
+/**
   Check if the current error is of temporary nature of not.
   Some errors are temporary in nature, such as
   ER_LOCK_DEADLOCK and ER_LOCK_WAIT_TIMEOUT.
@@ -5096,6 +5110,15 @@ slave_output_error_info(rpl_group_info *rgi, THD *thd)
   Relay_log_info *rli= rgi->rli;
   uint32 const last_errno= rli->last_error().number;
 
+  /*
+    Don't log spurious errors when the event group was aborted due to STOP
+    SLAVE FORCE.
+  */
+  if (rli->stop_slave_force &&
+      ( last_errno == ER_PRIOR_COMMIT_FAILED ||
+        ( thd->is_error() && thd->get_stmt_da()->sql_errno() == ER_PRIOR_COMMIT_FAILED) ))
+    return;
+
   if (unlikely(thd->is_error()))
   {
     char const *const errmsg= thd->get_stmt_da()->message();
@@ -5282,6 +5305,7 @@ pthread_handler_t handle_slave_sql(void *arg)
     Seconds_Behind_Master grows. No big deal.
   */
   rli->abort_slave = 0;
+  rli->stop_slave_force= false;
   rli->stop_for_until= false;
   mysql_mutex_unlock(&rli->run_lock);
   mysql_cond_broadcast(&rli->start_cond);

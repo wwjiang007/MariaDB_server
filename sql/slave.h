@@ -258,6 +258,7 @@ int purge_relay_logs(Relay_log_info* rli, THD *thd, bool just_reset,
 void set_slave_thread_options(THD* thd);
 void set_slave_thread_default_charset(THD *thd, rpl_group_info *rgi);
 int rotate_relay_log(Master_info* mi);
+bool has_non_abortable_trans(THD *thd, const Relay_log_info *rli);
 int has_temporary_error(THD *thd);
 int sql_delay_event(Log_event *ev, THD *thd, rpl_group_info *rgi);
 int apply_event_and_update_pos(Log_event* ev, THD* thd,
@@ -313,6 +314,8 @@ static inline bool event_can_update_last_master_timestamp(Log_event *ev)
 /* masks for start/stop operations on io and sql slave threads */
 #define SLAVE_IO  1
 #define SLAVE_SQL 2
+/* mask for STOP SLAVE .. FORCE. */
+#define SLAVE_STOP_FORCE 8
 
 /**
   @} (end of group Replication)
