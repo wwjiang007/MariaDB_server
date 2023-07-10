@@ -319,6 +319,7 @@ class String;
 #define Q_INVOKER 11
 
 #define Q_HRNOW 128
+#define Q_DUMMY 255
 
 /* Intvar event post-header */
 
@@ -3576,6 +3577,9 @@ public:
   event_mysql_xid_t xid;
 #endif
   uchar flags2;
+  uint  flags_extra; // more flags area placed after the regular flags2's one
+  my_thread_id thread_id;
+
   /* Flags2. */
 
   /* FL_STANDALONE is set when there is no terminating COMMIT event. */
@@ -3606,6 +3610,17 @@ public:
   static const uchar FL_PREPARED_XA= 64;
   /* FL_"COMMITTED or ROLLED-BACK"_XA is set for XA transaction. */
   static const uchar FL_COMPLETED_XA= 128;
+
+  /*
+    Flags_extra.
+
+    Bits from future MariaDB versions:
+    static const uchar FL_EXTRA_MULTI_ENGINE= 1;
+    static const uchar FL_START_ALTER_E1= 2;
+    static const uchar FL_COMMIT_ALTER_E1= 4;
+    static const uchar FL_ROLLBACK_ALTER_E1= 8;
+  */
+  static const uchar FL_EXTRA_THREAD_ID= 16; // thread_id like in BEGIN Query
 
 #ifdef MYSQL_SERVER
   Gtid_log_event(THD *thd_arg, uint64 seq_no, uint32 domain_id, bool standalone,

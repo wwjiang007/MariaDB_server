@@ -3273,7 +3273,9 @@ Gtid_log_event::Gtid_log_event(THD *thd_arg, uint64 seq_no_arg,
                                uint64 commit_id_arg)
   : Log_event(thd_arg, flags_arg, is_transactional),
     seq_no(seq_no_arg), commit_id(commit_id_arg), domain_id(domain_id_arg),
-    flags2((standalone ? FL_STANDALONE : 0) | (commit_id_arg ? FL_GROUP_COMMIT_ID : 0))
+    flags2((standalone ? FL_STANDALONE : 0) |
+           (commit_id_arg ? FL_GROUP_COMMIT_ID : 0)),
+    flags_extra(0), thread_id(thd_arg->thread_id)
 {
   cache_type= Log_event::EVENT_NO_CACHE;
   bool is_tmp_table= thd_arg->lex->stmt_accessed_temp_table();
@@ -3297,6 +3299,8 @@ Gtid_log_event::Gtid_log_event(THD *thd_arg, uint64 seq_no_arg,
   /* Preserve any DDL or WAITED flag in the slave's binlog. */
   if (thd_arg->rgi_slave)
     flags2|= (thd_arg->rgi_slave->gtid_ev_flags2 & (FL_DDL|FL_WAITED));
+  if (thread_id > 0)
+    flags_extra|= FL_EXTRA_THREAD_ID;
 
   XID_STATE &xid_state= thd->transaction->xid_state;
   if (is_transactional && xid_state.is_explicit_XA() &&
@@ -3352,7 +3356,7 @@ Gtid_log_event::peek(const char *event_start, size_t event_len,
 bool
 Gtid_log_event::write()
 {
-  uchar buf[GTID_HEADER_LEN+2+sizeof(XID)];
+  uchar buf[GTID_HEADER_LEN+2+sizeof(XID) + 1 + 8 /* FL_EXTRA_THREAD_ID */];
   size_t write_len;
 
   int8store(buf, seq_no);
@@ -3375,6 +3379,17 @@ Gtid_log_event::write()
     long data_length= xid.bqual_length + xid.gtrid_length;
     memcpy(buf+write_len, xid.data, data_length);
     write_len+= data_length;
+  }
+
+  if (flags_extra > 0)
+  {
+    buf[write_len]= flags_extra;
+    write_len++;
+  }
+  if (flags_extra & FL_EXTRA_THREAD_ID)
+  {
+    int8store(buf + write_len, thread_id);
+    write_len+= 8;
   }
 
   if (write_len < GTID_HEADER_LEN)

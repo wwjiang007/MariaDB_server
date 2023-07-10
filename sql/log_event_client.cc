@@ -3858,7 +3858,14 @@ Gtid_log_event::print(FILE *file, PRINT_EVENT_INFO *print_event_info)
     if (flags2 & FL_WAITED)
       if (my_b_write_string(&cache, " waited"))
         goto err;
+    if (flags_extra & FL_EXTRA_THREAD_ID)
+    {
+      longlong10_to_str(thread_id, buf2, 10);
+      if (my_b_printf(&cache, " thread_id=%s", buf2))
+        goto err;
+    }
     if (my_b_printf(&cache, "\n"))
+     if (my_b_printf(&cache, "\n"))
       goto err;
 
     if (!print_event_info->allow_parallel_printed ||

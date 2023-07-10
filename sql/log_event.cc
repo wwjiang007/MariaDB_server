@@ -1626,6 +1626,10 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
       pos+= 3;
       break;
     }
+    case Q_DUMMY:
+    {
+      break;
+    }
     default:
       /* That's why you must write status vars in growing order of code */
       DBUG_PRINT("info",("Query_log_event has unknown status vars (first has\
@@ -1941,11 +1945,12 @@ Query_log_event::begin_event(String *packet, ulong ev_offset,
   /*
     Currently we only need to replace GTID event.
     The length of GTID differs depending on whether it contains commit id.
+    And/or thread id.
   */
-  DBUG_ASSERT(data_len == LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN ||
-              data_len == LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 2);
-  if (data_len != LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN &&
-      data_len != LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 2)
+  DBUG_ASSERT(data_len >= LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN &&
+              data_len <= LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 2 + 9);
+  if (data_len < LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN ||
+      data_len > LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 2 + 9)
     return 1;
 
   flags= uint2korr(p + FLAGS_OFFSET);
@@ -1966,9 +1971,19 @@ Query_log_event::begin_event(String *packet, ulong ev_offset,
   }
   else
   {
-    DBUG_ASSERT(data_len == LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 2);
-    /* Put in an empty time_zone_str to take up the extra 2 bytes. */
-    int2store(q + Q_STATUS_VARS_LEN_OFFSET, 2);
+    DBUG_ASSERT(data_len <= LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 11);
+    DBUG_ASSERT(data_len >= LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 2);
+
+    /* Put in an empty time_zone_str to take up the extra 2 plus the number of
+       dummy_bytes. */
+    size_t dummy_bytes=
+        data_len - (LOG_EVENT_HEADER_LEN + GTID_HEADER_LEN + 2);
+
+    int2store(q + Q_STATUS_VARS_LEN_OFFSET, dummy_bytes + 2);
+    for (size_t i= 0; i < dummy_bytes; i++)
+      q[Q_DATA_OFFSET + i]= Q_DUMMY;
+    q+= dummy_bytes;
+
     q[Q_DATA_OFFSET]= Q_TIME_ZONE_CODE;
     q[Q_DATA_OFFSET+1]= 0;           /* Zero length for empty time_zone_str */
     q[Q_DATA_OFFSET+2]= 0;                  /* Zero terminator for empty db */
@@ -2594,10 +2609,11 @@ Binlog_checkpoint_log_event::Binlog_checkpoint_log_event(
 
 Gtid_log_event::Gtid_log_event(const char *buf, uint event_len,
                const Format_description_log_event *description_event)
-  : Log_event(buf, description_event), seq_no(0), commit_id(0)
+  : Log_event(buf, description_event), seq_no(0), commit_id(0), thread_id(0)
 {
   uint8 header_size= description_event->common_header_len;
   uint8 post_header_len= description_event->post_header_len[GTID_EVENT-1];
+  const char *buf_0= buf;
   if (event_len < (uint) header_size + (uint) post_header_len ||
       post_header_len < GTID_HEADER_LEN)
     return;
@@ -2630,6 +2646,21 @@ Gtid_log_event::Gtid_log_event(const char *buf, uint event_len,
     long data_length= xid.bqual_length + xid.gtrid_length;
     memcpy(xid.data, buf, data_length);
     buf+= data_length;
+  }
+
+  /* the extra flags check and actions */
+  if (static_cast<uint>(buf - buf_0) < event_len)
+  {
+    flags_extra= *buf++;
+
+    if (flags_extra & FL_EXTRA_THREAD_ID)
+    {
+      DBUG_ASSERT(static_cast<uint>(buf - buf_0) <= event_len + 8);
+
+      thread_id= uint8korr(buf);
+
+      DBUG_ASSERT(thread_id > 0);
+    }
   }
 }
 
