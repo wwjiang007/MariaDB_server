@@ -286,23 +286,27 @@ drop table t1;
 CREATE TABLE t1 (a char(1));
 INSERT INTO t1 VALUES ('A'),('B'),('A'),('B'),('A'),('B'),(NULL),('a'),('b'),(NULL),('A'),('B'),(NULL);
 flush status;
+--disable_ps2_protocol
 SELECT a FROM t1 GROUP BY a;
 SELECT a,count(*) FROM t1 GROUP BY a;
 SELECT a FROM t1 GROUP BY binary a;
 SELECT a,count(*) FROM t1 GROUP BY binary a;
 SELECT binary a FROM t1 GROUP BY 1;
 SELECT binary a,count(*) FROM t1 GROUP BY 1;
+--enable_ps2_protocol
 --disable_ps_protocol
 show status like 'Created%tables';
 --enable_ps_protocol
 # Do the same tests with on-disk temporary tables
 set tmp_memory_table_size=0;
+--disable_ps2_protocol
 SELECT a FROM t1 GROUP BY a;
 SELECT a,count(*) FROM t1 GROUP BY a;
 SELECT a FROM t1 GROUP BY binary a;
 SELECT a,count(*) FROM t1 GROUP BY binary a;
 SELECT binary a FROM t1 GROUP BY 1;
 SELECT binary a,count(*) FROM t1 GROUP BY 1;
+--enable_ps2_protocol
 --disable_ps_protocol
 show status like 'Created%tables';
 --enable_ps_protocol
