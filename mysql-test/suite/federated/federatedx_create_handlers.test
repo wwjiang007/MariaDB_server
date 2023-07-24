@@ -118,11 +118,14 @@ SELECT *
 FROM federated.t3, (SELECT * FROM federated.t1 WHERE id > 3) t
 WHERE federated.t3.name=t.name;
 
+#Check after fix MDEV-31361
+--disable_ps2_protocol
 SELECT *
 FROM federated.t3, (SELECT t1.name FROM federated.t1
                     WHERE id IN (SELECT count(*)
                                  FROM federated.t2 GROUP BY name)) t
 WHERE federated.t3.name=t.name;
+--enable_ps2_protocol
 
 EXPLAIN
 SELECT *
