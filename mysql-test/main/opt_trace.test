@@ -1045,9 +1045,11 @@ create table t1 (cn_c int, cn_n char(10), cn_a int );
 create table t2 (ci_p int, ci_c int );
 create table t3 (ci_p int, ci_c int );
 
+--disable_ps2_protocol
 SELECT cn_n FROM t1 WHERE (EXISTS (select 1 from t2 where ci_p > 100000 and cn_c = ci_c)
   OR (cn_n LIKE 'L%') )
   AND cn_a > 1000000;
+--enable_ps2_protocol
 
 select 
   json_detailed(
