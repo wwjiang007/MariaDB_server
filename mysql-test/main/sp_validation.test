@@ -2375,22 +2375,27 @@ delimiter ;|
 # the stored routine from sp_cache
 #
 SET @@debug_dbug='+d,check_sp_cache_not_invalidated';
-
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 DROP TABLE t1_result_set;
 
 --echo # Check if added column is noticed by invocation of stored function.
 ALTER TABLE t1 ADD COLUMN (b INT);
 
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 DROP TABLE t1_result_set;
 
 --echo # Check if dropped column is noticed by invocation of stored function.
 ALTER TABLE t1 DROP COLUMN a;
 
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 
 SET @@debug_dbug=@orig_dbug;
@@ -2425,7 +2430,9 @@ delimiter ;|
 #
 SET @@debug_dbug='+d,check_sp_cache_not_invalidated';
 
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 DROP TABLE t1_result_set;
 
@@ -2435,7 +2442,9 @@ DROP TABLE t1;
 CREATE TABLE t1 (a INT);
 INSERT INTO t1 VALUES (1), (2);
 
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 
 SET @@debug_dbug=@orig_dbug;
@@ -2461,7 +2470,9 @@ END|
 
 delimiter ;|
 
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 DROP TABLE t1_result_set;
 
@@ -2475,7 +2486,9 @@ ALTER VIEW v1 AS SELECT * FROM t1;
 #   SET @@debug_dbug='+d,check_sp_cache_not_invalidated'
 # shouldn't be run here since it will hit DBUG_SUICIDE in the function
 # sp_cache_flush_obsolete()
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 
 DROP TABLE t1_result_set;
@@ -2504,7 +2517,9 @@ CREATE PROCEDURE p1()
 delimiter ;|
 
 CALL p1();
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 DROP TABLE t1_result_set;
 
@@ -2520,7 +2535,9 @@ INSERT INTO t1 VALUES (1), (2);
 #
 SET @@debug_dbug='+d,check_sp_cache_not_invalidated';
 CALL p1;
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 DROP TABLE t1_result_set;
 
@@ -2533,7 +2550,9 @@ INSERT INTO t2 VALUES (1), (2);
 CREATE VIEW t1 AS SELECT * FROM t2;
 
 CALL p1;
+--disable_ps2_protocol
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1_result_set;
 
 DROP TABLE t1_result_set;
