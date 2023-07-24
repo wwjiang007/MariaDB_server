@@ -726,15 +726,19 @@ DELIMITER ;//
 
 INSERT INTO t1 VALUES (3), (7), (1);
 
+--disable_ps2_protocol
 --error ER_CANT_UPDATE_USED_TABLE_IN_SF_OR_TRG
 SELECT * FROM t1 WHERE f1() = 1;
 SELECT f1();
+--enable_ps2_protocol
 SELECT * FROM t1;
 
+--disable_ps2_protocol
 --error ER_CANT_UPDATE_USED_TABLE_IN_SF_OR_TRG
 SELECT * FROM t1 WHERE f2() = 1;
 SELECT f2();
 SELECT * FROM t1;
+--enable_ps2_protocol
 
 DROP FUNCTION f1;
 DROP FUNCTION f2;
