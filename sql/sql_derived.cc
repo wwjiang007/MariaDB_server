@@ -890,6 +890,15 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
   if (!derived->table)
     derived->table= derived->derived_result->table;
   DBUG_ASSERT(derived->table);
+  if (derived->column_names)
+  {
+    // rename the columns in the result table
+    List_iterator<Lex_ident_sys> overwrite_iterator(*derived->column_names);
+    Lex_ident_sys *new_name;
+    for (int i= 0; (new_name= overwrite_iterator++); i++)
+      lex_string_set(&derived->table->field[i]->field_name, new_name->str);
+  }
+
   if (derived->is_derived() && derived->is_merged_derived())
     first_select->mark_as_belong_to_derived(derived);
 
@@ -1345,6 +1354,10 @@ bool mysql_derived_reinit(THD *thd, LEX *lex, TABLE_LIST *derived)
                        (derived->alias.str ? derived->alias.str : "<NULL>"),
                        derived->get_unit()));
   st_select_lex_unit *unit= derived->get_unit();
+
+  if (derived->original_names_are_set &&
+      unit->first_select()->set_item_list_names(derived->original_names))
+    DBUG_RETURN(TRUE);
 
   // reset item names to that saved after wildcard expansion in JOIN::prepare
   for(st_select_lex *sl= unit->first_select(); sl; sl= sl->next_select())

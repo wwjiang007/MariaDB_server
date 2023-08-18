@@ -1394,6 +1394,9 @@ bool st_select_lex_unit::prepare(TABLE_LIST *derived_arg,
   bool distinct_key= 0;
   DBUG_ENTER("st_select_lex_unit::prepare");
   DBUG_ASSERT(thd == current_thd);
+  bool rename_early= false;
+  bool have_column_names= derived_arg && derived_arg->column_names &&
+                    (derived_arg->column_names->elements > 0);
 
   if (is_recursive && (sl= first_sl->next_select()))
   {
@@ -1573,6 +1576,7 @@ bool st_select_lex_unit::prepare(TABLE_LIST *derived_arg,
 
   if (!is_union_select && !is_recursive)
   {
+    rename_early= true;
     if (sl->tvc)
     {
       if (sl->tvc->prepare(thd, sl, tmp_result, this))
@@ -1653,8 +1657,13 @@ bool st_select_lex_unit::prepare(TABLE_LIST *derived_arg,
                          is_union_select))
 	  goto err;
       }
-      else if (sl->tvc->prepare(thd, sl, tmp_result, this))
+      else
+      {
+        if (sl->tvc->prepare(thd, sl, tmp_result, this))
 	  goto err;
+
+        rename_early= true;
+      }
     }
     else if (prepare_join(thd, sl, tmp_result, additional_options,
                           is_union_select))
@@ -1752,6 +1761,21 @@ bool st_select_lex_unit::prepare(TABLE_LIST *derived_arg,
         is_rec_result_table_created= true;
       }
     }      
+  }
+
+  if (rename_early && have_column_names)
+  {
+    /*
+      We need to rename tvc BEFORE Item_holder pushed into result table
+      below in join_union_item_types()
+      but AFTER the item_list is set up in the above code block.
+    */
+    if (derived_arg->set_original_names())
+      goto err;
+    if (first_select()->set_item_list_names(derived_arg->column_names))
+      goto err;
+
+    have_column_names= false;   // do NOT do this later on at the usual time
   }
 
   // In case of a non-recursive UNION, join data types for all UNION parts.
@@ -1950,6 +1974,14 @@ cont:
       if (prepare_pushdown(use_direct_union_result, sel_result))
         goto err;
     }
+  }
+
+  if (have_column_names)
+  {
+    if (derived_arg->set_original_names())
+      goto err;
+    if (first_select()->set_item_list_names(derived_arg->column_names))
+      goto err;
   }
 
   thd->lex->current_select= lex_select_save;
