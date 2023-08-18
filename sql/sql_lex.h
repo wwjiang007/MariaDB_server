@@ -1441,6 +1441,7 @@ public:
                               bool straight_fl);
   TABLE_LIST *convert_right_join();
   List<Item>* get_item_list();
+  int set_item_list_names( List<Lex_ident_sys> *overwrite );
   ulong get_table_join_options();
   void set_lock_for_tables(thr_lock_type lock_type, bool for_update,
                            bool skip_locks);
@@ -4786,7 +4787,8 @@ public:
   SELECT_LEX *parsed_TVC_end();
   TABLE_LIST *parsed_derived_table(SELECT_LEX_UNIT *unit,
                                    int for_system_time,
-                                   LEX_CSTRING *alias);
+                                   LEX_CSTRING *alias,
+                                   List<Lex_ident_sys> *column_names= nullptr);
   bool parsed_create_view(SELECT_LEX_UNIT *unit, int check);
   bool select_finalize(st_select_lex_unit *expr);
   bool select_finalize(st_select_lex_unit *expr, Lex_select_lock l);
