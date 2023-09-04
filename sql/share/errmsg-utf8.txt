@@ -12307,3 +12307,8 @@ ER_CF_DROPPED
 ER_CANT_DROP_CF
         chi "不能删除列族 ('%s')，因为它正在使用或不存在。"
         eng "Cannot drop Column family ('%s') because it is in use or does not exist."
+WARN_SORTING_ON_TRUNCATED_LENGTH
+        eng "%llu strings were longer than max_sort_length. Sorting used only the first %lu bytes"
+        ger "%llu Zeichenketten waren länger als max_sort_length. Sie wurden anhand der ersten %lu Bytes verglichen"
+        rus "%llu строк были длиннее, чем max_sort_length. Их сортировка проведена по первым %lu байтам"
+        swe "%llu sträng var längre än max_sort_length=%lu"

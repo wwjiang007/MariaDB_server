@@ -1473,7 +1473,7 @@ public:
   /*
     Create mem-comparable sort key part for a sort key
   */
-  void make_sort_key_part(uchar *buff, uint length);
+  void make_sort_key_part(uchar *buff, uint length, uint original_length);
 
   /*
     create a compact sort key which can be compared with a comparison
@@ -1490,7 +1490,8 @@ public:
     max_sort_length.
   */
 
-  virtual void sort_string(uchar *buff,uint length)=0;
+  virtual void sort_string(uchar *buff,uint length,
+                           uint original_length= UINT_MAX)= 0;
   virtual bool optimize_range(uint idx, uint part) const;
   virtual void free() {}
   virtual Field *make_new_field(MEM_ROOT *root, TABLE *new_table,
@@ -2347,7 +2348,7 @@ public:
   longlong val_int() override;
   String *val_str(String *, String *) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   void overflow(bool negative);
   bool zero_pack() const override { return false; }
   void sql_type(String &str) const override;
@@ -2439,7 +2440,7 @@ public:
     return my_decimal(ptr, precision, dec).to_bool();
   }
   int cmp(const uchar *, const uchar *) const override;
-  void sort_string(uchar *buff, uint length) override;
+  void sort_string(uchar *buff, uint length, uint original_length) override;
   bool zero_pack() const override { return false; }
   void sql_type(String &str) const override;
   uint32 max_display_length() const override { return field_length; }
@@ -2561,7 +2562,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 1; }
   const Type_limits_int *type_limits_int() const override
   {
@@ -2624,7 +2625,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 2; }
   const Type_limits_int *type_limits_int() const override
   {
@@ -2671,7 +2672,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 3; }
   const Type_limits_int *type_limits_int() const override
   {
@@ -2723,7 +2724,7 @@ public:
   bool send(Protocol *protocol) override;
   String *val_str(String *, String *) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 4; }
   const Type_limits_int *type_limits_int() const override
   {
@@ -2784,7 +2785,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 8; }
   const Type_limits_int *type_limits_int() const override
   {
@@ -2884,7 +2885,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff, uint length) override;
+  void sort_string(uchar *buff, uint length, uint original_length) override;
   uint32 pack_length() const override { return sizeof(float); }
   uint row_pack_length() const override { return pack_length(); }
   ulonglong get_max_int_value() const override
@@ -2948,7 +2949,7 @@ public:
   String *val_str(String *, String *) override final;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override final;
-  void sort_string(uchar *buff, uint length) override final;
+  void sort_string(uchar *buff, uint length, uint original_length) override final;
   uint32 pack_length() const override final { return sizeof(double); }
   uint row_pack_length() const override final { return pack_length(); }
   ulonglong get_max_int_value() const override final
@@ -3001,7 +3002,7 @@ public:
   { value2->length(0); return value2;}
   bool is_equal(const Column_definition &new_field) const override final;
   int cmp(const uchar *a, const uchar *b) const override final { return 0;}
-  void sort_string(uchar *buff, uint length) override final {}
+  void sort_string(uchar *buff, uint length, uint original_length) override final {}
   uint32 pack_length() const override final { return 0; }
   void sql_type(String &str) const override final;
   uint size_of() const override final { return sizeof *this; }
@@ -3251,7 +3252,7 @@ public:
   }
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 4; }
   int set_time() override;
   /* Get TIMESTAMP field value as seconds since begging of Unix Epoch */
@@ -3300,7 +3301,7 @@ public:
                       uint param_data) override
   { return Field::unpack(to, from, from_end, param_data); }
   void make_send_field(Send_field *field) override;
-  void sort_string(uchar *to, uint length) override
+  void sort_string(uchar *to, uint length, uint original_length) override
   {
     DBUG_ASSERT(length == pack_length());
     memcpy(to, ptr, length);
@@ -3504,7 +3505,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 4; }
   void sql_type(String &str) const override;
   uchar *pack(uchar* to, const uchar *from, uint) override
@@ -3543,7 +3544,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 3; }
   void sql_type(String &str) const override;
   bool get_date(MYSQL_TIME *ltime, date_mode_t fuzzydate) override
@@ -3635,7 +3636,7 @@ public:
   longlong val_int() override;
   bool get_date(MYSQL_TIME *ltime, date_mode_t fuzzydate) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 3; }
   uint size_of() const override { return sizeof *this; }
 };
@@ -3695,7 +3696,7 @@ public:
   int reset() override;
   bool get_date(MYSQL_TIME *ltime, date_mode_t fuzzydate) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override
   { return Type_handler_time::hires_bytes(dec); }
   uint size_of() const override { return sizeof *this; }
@@ -3739,7 +3740,7 @@ public:
     uint tmp= my_time_binary_length(field_metadata);
     DBUG_RETURN(tmp);
   }
-  void sort_string(uchar *to, uint length) override
+  void sort_string(uchar *to, uint length, uint original_length) override
   {
     DBUG_ASSERT(length == Field_timef::pack_length());
     memcpy(to, ptr, length);
@@ -3824,7 +3825,7 @@ public:
   String *val_str(String *, String *) override;
   bool send(Protocol *protocol) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint32 pack_length() const override { return 8; }
   bool get_date(MYSQL_TIME *ltime, date_mode_t fuzzydate) override
   { return Field_datetime0::get_TIME(ltime, ptr, fuzzydate); }
@@ -3868,7 +3869,7 @@ public:
   const uchar *unpack(uchar* to, const uchar *from, const uchar *from_end,
                       uint param_data) override final
   { return Field::unpack(to, from, from_end, param_data); }
-  void sort_string(uchar *to, uint length) override final
+  void sort_string(uchar *to, uint length, uint original_length) override final
   {
     DBUG_ASSERT(length == pack_length());
     memcpy(to, ptr, length);
@@ -4056,7 +4057,7 @@ public:
   String *val_str(String *, String *) override;
   my_decimal *val_decimal(my_decimal *) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   void update_data_type_statistics(Data_type_statistics *st) const override
   {
     st->m_fixed_string_count++;
@@ -4194,7 +4195,7 @@ public:
   int cmp(const uchar *a,const uchar *b) const override;
   int cmp_prefix(const uchar *a, const uchar *b, size_t prefix_char_len) const
     override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff,uint length, uint original_length) override;
   uint get_key_image(uchar *buff, uint length,
                      const uchar *ptr_arg, imagetype type) const override;
   void set_key_image(const uchar *buff,uint length) override;
@@ -4498,7 +4499,7 @@ public:
   /* Never update the value of max_val for a blob field */
   bool update_max(Field *max_val, bool force_update) override { return false; }
   uint32 key_length() const override { return 0; }
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff, uint length, uint original_length) override;
   uint32 pack_length() const override
   { return (uint32) (packlength + portable_sizeof_char_ptr); }
 
@@ -4799,7 +4800,7 @@ public:
   longlong val_int() override;
   String *val_str(String *, String *) override;
   int cmp(const uchar *,const uchar *) const override;
-  void sort_string(uchar *buff,uint length) override;
+  void sort_string(uchar *buff, uint length, uint original_length) override;
   uint32 pack_length() const override { return (uint32) packlength; }
   void store_type(ulonglong value);
   void sql_type(String &str) const override;
@@ -5008,7 +5009,7 @@ public:
                      const uchar *ptr_arg, imagetype type) const override;
   void set_key_image(const uchar *buff, uint length) override
   { Field_bit::store((char*) buff, length, &my_charset_bin); }
-  void sort_string(uchar *buff, uint length) override
+  void sort_string(uchar *buff, uint length, uint original_length) override
   { get_key_image(buff, length, ptr, itRAW); }
   uint32 pack_length() const override
   { return (uint32) (field_length + 7) / 8; }
