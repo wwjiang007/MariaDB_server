@@ -464,7 +464,7 @@ public:
 	Called for every page in the tablespace. If the page was not
 	updated then its state must be set to BUF_PAGE_NOT_USED. For
 	compressed tables the page descriptor memory will be at offset:
-		block->page.frame + srv_page_size;
+		block->page.frame() + srv_page_size;
 	@param block block read from file, note it is not from the buffer pool
 	@retval DB_SUCCESS or error code. */
 	virtual dberr_t operator()(buf_block_t* block) UNIV_NOTHROW = 0;
@@ -481,7 +481,7 @@ public:
 	static byte* get_frame(const buf_block_t* block)
 	{
 		return block->page.zip.data
-			? block->page.zip.data : block->page.frame;
+			? block->page.zip.data : block->page.frame();
 	}
 
 	/** Invoke the functionality for the callback */
@@ -614,7 +614,7 @@ AbstractCallback::init(
 	os_offset_t		file_size,
 	const buf_block_t*	block) UNIV_NOTHROW
 {
-	const page_t*		page = block->page.frame;
+	const page_t*		page = block->page.frame();
 
 	m_space_flags = fsp_header_get_flags(page);
 	if (!fil_space_t::is_valid_flags(m_space_flags, true)) {
@@ -753,7 +753,7 @@ dberr_t FetchIndexRootPages::operator()(buf_block_t* block) UNIV_NOTHROW
 		return(DB_CORRUPTION);
 	}
 
-	if (!page_is_comp(block->page.frame) !=
+	if (!page_is_comp(block->page.frame()) !=
 	    !dict_table_is_comp(m_table)) {
 		ib_errf(m_trx->mysql_thd, IB_LOG_LEVEL_ERROR,
 			ER_TABLE_SCHEMA_MISMATCH,
@@ -1879,7 +1879,7 @@ PageConverter::update_index_page(
 		return(DB_SUCCESS);
 	}
 
-	buf_frame_t* page = block->page.frame;
+	buf_frame_t* page = block->page.frame();
 	const index_id_t id = btr_page_get_index_id(page);
 
 	if (id != m_index->m_id) {
@@ -3688,7 +3688,7 @@ dberr_t FetchIndexRootPages::run(const fil_iterator_t& iter,
   const bool encrypted= iter.crypt_data != NULL &&
     iter.crypt_data->should_encrypt();
   byte* const readptr= iter.io_buffer;
-  block->page.frame= readptr;
+  block->page.frame_= readptr;
 
   if (block->page.zip.data)
     block->page.zip.data= readptr;
@@ -3797,7 +3797,7 @@ static dberr_t fil_iterate(
 		}
 
 		byte*		io_buffer = iter.io_buffer;
-		block->page.frame = io_buffer;
+		block->page.frame_ = io_buffer;
 
 		if (block->page.zip.data) {
 			/* Zip IO is done in the compressed page buffer. */
@@ -3836,7 +3836,7 @@ static dberr_t fil_iterate(
 
 		for (ulint i = 0; i < n_pages_read;
 		     ++block->page.id_,
-		     ++i, page_off += size, block->page.frame += size) {
+		     ++i, page_off += size, block->page.frame_ += size) {
 			byte*	src = readptr + i * size;
 			const ulint page_no = page_get_page_no(src);
 			if (!page_no && block->page.id().page_no()) {
@@ -3893,7 +3893,7 @@ page_corrupted:
 				} else if (!page_compressed
 					   && type != FIL_PAGE_TYPE_XDES
 					   && !block->page.zip.data) {
-					block->page.frame = src;
+					block->page.frame_ = src;
 					frame_changed = true;
 				} else {
 					ut_ad(dst != src);
@@ -3945,7 +3945,7 @@ page_corrupted:
 			if ((err = callback(block)) != DB_SUCCESS) {
 				goto func_exit;
 			} else if (!updated) {
-				updated = !!block->page.frame;
+				updated = !!block->page.frame();
 			}
 
 			/* If tablespace is encrypted we use additional
@@ -3953,10 +3953,10 @@ page_corrupted:
 			for decrypting readptr == crypt_io_buffer != io_buffer.
 
 			Destination for decryption is a buffer pool block
-			block->page.frame == dst == io_buffer that is updated.
+			block->page.frame() == dst == io_buffer that is updated.
 			Pages that did not require decryption even when
 			tablespace is marked as encrypted are not copied
-			instead block->page.frame is set to src == readptr.
+			instead block->page.frame() is set to src == readptr.
 
 			For encryption we again use temporary scratch area
 			writeptr != io_buffer == dst
@@ -3989,7 +3989,7 @@ page_corrupted:
 				if (block->page.zip.data) {
 					block->page.zip.data = dst;
 				} else {
-					block->page.frame = dst;
+					block->page.frame_ = dst;
 				}
 			}
 
@@ -4152,7 +4152,7 @@ fil_tablespace_iterate(
 
 	buf_block_t* block = reinterpret_cast<buf_block_t*>
 		(ut_zalloc_nokey(sizeof *block));
-	block->page.frame = page;
+	block->page.frame_ = page;
 	block->page.init(buf_page_t::UNFIXED + 1, page_id_t{~0ULL});
 
 	/* Read the first page and determine the page size. */
@@ -4207,8 +4207,8 @@ fil_tablespace_iterate(
 
 		if (block->page.zip.ssize) {
 			ut_ad(iter.n_io_buffers == 1);
-			block->page.frame = iter.io_buffer;
-			block->page.zip.data = block->page.frame
+			block->page.frame_ = iter.io_buffer;
+			block->page.zip.data = block->page.frame_
 				+ srv_page_size;
 		}
 

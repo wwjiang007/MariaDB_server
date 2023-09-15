@@ -313,7 +313,7 @@ btr_get_size_and_reserved(
 	if (!root) {
 		return ULINT_UNDEFINED;
 	}
-	const page_t* r = root->page.frame;
+	const page_t* r = root->page.frame();
 
 	mtr->x_lock_space(index->table->space);
 

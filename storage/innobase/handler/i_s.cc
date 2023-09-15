@@ -4091,7 +4091,7 @@ i_s_innodb_buffer_page_get_info(
 			return;
 		}
 
-		frame = bpage->frame, page_info->compressed_only = !frame;
+		frame = bpage->frame(), page_info->compressed_only = !frame;
 		if (UNIV_LIKELY(frame != nullptr)) {
 #ifdef BTR_CUR_HASH_ADAPT
 			/* Note: this may be a false positive, that

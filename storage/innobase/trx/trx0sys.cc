@@ -90,7 +90,7 @@ trx_sysf_get_n_rseg_slots()
 
 	srv_available_undo_logs = 0;
 	if (const buf_block_t* sys_header = trx_sysf_get(&mtr, false)) {
-		const page_t* sys_page = sys_header->page.frame;
+		const page_t* sys_page = sys_header->page.frame();
 
 		for (ulint rseg_id = 0; rseg_id < TRX_SYS_N_RSEGS; rseg_id++) {
 			srv_available_undo_logs
@@ -121,7 +121,7 @@ dberr_t trx_sys_create_sys_pages(mtr_t *mtr)
   }
   ut_a(block->page.id() == page_id_t(0, TRX_SYS_PAGE_NO));
 
-  page_t *page= block->page.frame;
+  page_t *page= block->page.frame();
 
   mtr->write<2>(*block, FIL_PAGE_TYPE + page, FIL_PAGE_TYPE_TRX_SYS);
 
@@ -225,7 +225,7 @@ static trx_rseg_t *trx_rseg_create(ulint space_id)
     ut_ad(space->purpose == FIL_TYPE_TABLESPACE);
     if (buf_block_t *sys_header= trx_sysf_get(&mtr))
     {
-      page_t *sys_page= sys_header->page.frame;
+      page_t *sys_page= sys_header->page.frame();
       ulint rseg_id= trx_sys_rseg_find_free(sys_page);
       dberr_t err;
       if (buf_block_t *rblock= rseg_id == ULINT_UNDEFINED

@@ -173,7 +173,7 @@ inline uint32_t mlog_decode_len(const byte *log, const byte *end)
 template<unsigned l,mtr_t::write_type w,typename V>
 inline bool mtr_t::write(const buf_block_t &block, void *ptr, V val)
 {
-  ut_ad(ut_align_down(ptr, srv_page_size) == block.page.frame);
+  ut_ad(ut_align_down(ptr, srv_page_size) == block.page.frame());
   static_assert(l == 1 || l == 2 || l == 4 || l == 8, "wrong length");
   byte buf[l];
 
@@ -223,7 +223,7 @@ inline void mtr_t::memset(const buf_block_t &b, const byte *ofs, ulint len,
                           byte val)
 {
   ut_ad(len);
-  ut_ad(b.page.frame == ut_align_down(ofs, srv_page_size));
+  ut_ad(b.page.frame() == ut_align_down(ofs, srv_page_size));
   ut_ad(ut_align_down(ofs, srv_page_size) ==
         ut_align_down(ofs + len, srv_page_size));
   set_modified(b);
@@ -262,7 +262,7 @@ inline void mtr_t::memset(const buf_block_t &b, const byte *ofs, size_t len,
 {
   ut_ad(size);
   ut_ad(len > size); /* use mtr_t::memcpy() for shorter writes */
-  ut_ad(b.page.frame == ut_align_down(ofs, srv_page_size));
+  ut_ad(b.page.frame() == ut_align_down(ofs, srv_page_size));
   ut_ad(ut_align_down(ofs, srv_page_size) ==
         ut_align_down(ofs + len, srv_page_size));
   set_modified(b);
@@ -338,7 +338,7 @@ inline void mtr_t::memmove(const buf_block_t &b, const byte *d, const byte *s,
 {
   ut_ad(len);
   ut_ad(s != d);
-  ut_d(const byte *frame= b.page.frame);
+  ut_d(const byte *frame= b.page.frame());
   ut_ad(d >= frame + 8);
   ut_ad(s >= frame + 8);
   ut_ad(s <= frame + srv_page_size);
@@ -480,7 +480,7 @@ template<mtr_t::write_type w>
 inline void mtr_t::memcpy(const buf_block_t &b, void *dest, const void *str,
                           ulint len)
 {
-  ut_ad(ut_align_down(dest, srv_page_size) == b.page.frame);
+  ut_ad(ut_align_down(dest, srv_page_size) == b.page.frame());
   char *d= static_cast<char*>(dest);
   const char *s= static_cast<const char*>(str);
   if (w != FORCED && is_logged())

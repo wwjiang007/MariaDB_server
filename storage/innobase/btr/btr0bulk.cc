@@ -70,7 +70,7 @@ PageBulk::init()
 			return err;
 		}
 
-		new_page = new_block->page.frame;
+		new_page = new_block->page.frame();
 		m_page_no = new_block->page.id().page_no();
 
 		byte* index_id = my_assume_aligned<2>
@@ -102,7 +102,7 @@ PageBulk::init()
 			return(DB_CORRUPTION);
 		}
 
-		new_page = new_block->page.frame;
+		new_page = new_block->page.frame();
 
 		ut_ad(page_dir_get_n_heap(new_page) == PAGE_HEAP_NO_USER_LOW);
 
@@ -488,8 +488,8 @@ inline void PageBulk::finishPage()
 
 inline bool PageBulk::needs_finish() const
 {
-  ut_ad(page_align(m_cur_rec) == m_block->page.frame);
-  ut_ad(m_page == m_block->page.frame);
+  ut_ad(page_align(m_cur_rec) == m_block->page.frame());
+  ut_ad(m_page == m_block->page.frame());
   if (!m_page[PAGE_HEADER + PAGE_DIRECTION_B])
     return true;
   ulint heap_no, n_heap= page_header_get_field(m_page, PAGE_N_HEAP);
@@ -1192,7 +1192,7 @@ err_exit:
 		}
 
 		first_rec = page_rec_get_next(
-			page_get_infimum_rec(last_block->page.frame));
+			page_get_infimum_rec(last_block->page.frame()));
 		/* Because this index tree is being created by this thread,
 		we assume that it cannot be corrupted. */
 		ut_ad(first_rec);

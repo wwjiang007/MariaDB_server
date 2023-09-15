@@ -227,7 +227,7 @@ rtr_update_mbr_field(
 	block = btr_cur_get_block(cursor);
 
 	child = btr_node_ptr_get_child_page_no(rec, offsets);
-	const ulint n_core = page_is_leaf(block->page.frame)
+	const ulint n_core = page_is_leaf(block->page.frame())
 		? index->n_core_fields : 0;
 
 	if (new_rec) {
@@ -571,8 +571,8 @@ rtr_adjust_upper_level(
 	cursor.page_cur.index = sea_cur->index();
 	cursor.page_cur.block = block;
 
-	page_t* page = block->page.frame;
-	page_t* new_page = new_block->page.frame;
+	page_t* page = block->page.frame();
+	page_t* new_page = new_block->page.frame();
 
 	/* Get the level of the split pages */
 	level = btr_page_get_level(page);
@@ -670,7 +670,7 @@ rtr_adjust_upper_level(
 	} else if (buf_block_t*	next_block =
 		   btr_block_get(*sea_cur->index(), next_page_no, RW_X_LATCH,
 				 false, mtr, &err)) {
-		page_t *next_page = next_block->page.frame;
+		page_t *next_page = next_block->page.frame();
 		if (UNIV_UNLIKELY(memcmp_aligned<4>(next_page + FIL_PAGE_PREV,
 						    page
 						    + FIL_PAGE_OFFSET, 4))) {
@@ -965,7 +965,7 @@ corrupted:
 		return nullptr;
 	}
 
-	new_page = new_block->page.frame;
+	new_page = new_block->page.frame();
 	new_page_zip = buf_block_get_page_zip(new_block);
 	if (page_level && UNIV_LIKELY_NULL(new_page_zip)) {
 		/* ROW_FORMAT=COMPRESSED non-leaf pages are not expected
@@ -1263,7 +1263,7 @@ rtr_ins_enlarge_mbr(
 		offsets = rtr_page_get_father_block(
 			NULL, heap, mtr, btr_cur, &cursor);
 
-		page = block->page.frame;
+		page = block->page.frame();
 
 		/* Update the mbr field of the rec. */
 		rtr_update_mbr_field(&cursor, offsets, NULL, page,
@@ -1293,7 +1293,7 @@ rtr_page_copy_rec_list_end_no_locks(
 	ulint*		num_moved,	/*!< out: num of rec to move */
 	mtr_t*		mtr)		/*!< in: mtr */
 {
-	page_t*		new_page	= new_block->page.frame;
+	page_t*		new_page	= new_block->page.frame();
 	page_cur_t	page_cur;
 	page_cur_t	cur1;
 	rec_t*		cur_rec;
@@ -1634,7 +1634,7 @@ rtr_check_same_block(
 	const uint32_t	page_no =
 		btr_cur_get_block(cursor)->page.id().page_no();
 	rec_offs*	offsets;
-	rec_t*		rec = page_get_infimum_rec(parentb->page.frame);
+	rec_t*		rec = page_get_infimum_rec(parentb->page.frame());
 
 	while ((rec = page_rec_get_next(rec)) && !page_rec_is_supremum(rec)) {
 		offsets = rec_get_offsets(
@@ -1844,7 +1844,7 @@ err_exit:
 		mtr.commit();
 		return HA_POS_ERROR;
 	}
-	const page_t* page = block->page.frame;
+	const page_t* page = block->page.frame();
 	const unsigned n_recs = page_header_get_field(page, PAGE_N_RECS);
 
 	if (n_recs == 0) {

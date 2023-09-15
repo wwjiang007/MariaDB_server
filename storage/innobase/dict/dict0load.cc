@@ -2481,7 +2481,7 @@ corrupted:
 				RW_S_LATCH, &mtr);
 			bool corrupted = !block;
 			if (block) {
-				const page_t* page = block->page.frame;
+				const page_t* page = block->page.frame();
 				corrupted = page_get_space_id(page)
 					!= page_id.space()
 					|| page_get_page_no(page)

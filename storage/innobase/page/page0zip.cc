@@ -497,7 +497,7 @@ static void page_zip_compress_write_log(buf_block_t *block,
   if (!mtr->is_logged())
     return;
 
-  page_t *page= block->page.frame;
+  page_t *page= block->page.frame();
   const page_zip_des_t *page_zip= &block->page.zip;
   /* Read the number of user records. */
   ulint trailer_size= ulint(page_dir_get_n_heap(page_zip->data)) -
@@ -1360,7 +1360,7 @@ page_zip_compress(
 	my_bool			cmp_per_index_enabled;
 	cmp_per_index_enabled	= srv_cmp_per_index_enabled;
 
-	page_t* page = block->page.frame;
+	page_t* page = block->page.frame();
 	page_zip_des_t* page_zip = &block->page.zip;
 
 	ut_a(page_is_comp(page));
@@ -3618,7 +3618,7 @@ page_zip_write_rec_ext(
 	page_zip_des_t* const page_zip = &block->page.zip;
 
 	ut_ad(rec_offs_validate(rec, index, offsets));
-	ut_ad(page == block->page.frame);
+	ut_ad(page == block->page.frame());
 	MEM_CHECK_DEFINED(rec, rec_offs_data_size(offsets));
 	MEM_CHECK_DEFINED(rec - rec_offs_extra_size(offsets),
 			  rec_offs_extra_size(offsets));
@@ -3737,7 +3737,7 @@ void page_zip_write_rec(buf_block_t *block, const byte *rec,
 	ulint		heap_no;
 	byte*		slot;
 
-	ut_ad(page == block->page.frame);
+	ut_ad(page == block->page.frame());
 	ut_ad(page_zip_simple_validate(page_zip));
 	ut_ad(page_zip_get_size(page_zip)
 	      > PAGE_DATA + page_zip_dir_size(page_zip));
@@ -3920,7 +3920,7 @@ page_zip_write_blob_ptr(
 {
 	const byte*	field;
 	byte*		externs;
-	const page_t* const page = block->page.frame;
+	const page_t* const page = block->page.frame();
 	page_zip_des_t* const page_zip = &block->page.zip;
 	ulint		blob_no;
 	ulint		len;
@@ -3984,7 +3984,7 @@ page_zip_write_node_ptr(
 	byte*	storage;
 	page_zip_des_t* const page_zip = &block->page.zip;
 
-	ut_d(const page_t* const page = block->page.frame);
+	ut_d(const page_t* const page = block->page.frame());
 	ut_ad(page_simple_validate_new(page));
 	ut_ad(page_zip_simple_validate(page_zip));
 	ut_ad(page_zip_get_size(page_zip)
@@ -4031,7 +4031,7 @@ page_zip_write_trx_id_and_roll_ptr(
 {
 	page_zip_des_t* const page_zip = &block->page.zip;
 
-	ut_d(const page_t* const page = block->page.frame);
+	ut_d(const page_t* const page = block->page.frame());
 	ut_ad(page_align(rec) == page);
 	ut_ad(page_simple_validate_new(page));
 	ut_ad(page_zip_simple_validate(page_zip));
@@ -4127,7 +4127,7 @@ page_zip_clear_rec(
 	byte*	field;
 	ulint	len;
 
-	ut_ad(page_align(rec) == block->page.frame);
+	ut_ad(page_align(rec) == block->page.frame());
 	page_zip_des_t* const page_zip = &block->page.zip;
 
 	/* page_zip_validate() would fail here if a record
@@ -4135,7 +4135,7 @@ page_zip_clear_rec(
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(!page_zip_dir_find(page_zip, page_offset(rec)));
 	ut_ad(page_zip_dir_find_free(page_zip, page_offset(rec)));
-	ut_ad(page_zip_header_cmp(page_zip, block->page.frame));
+	ut_ad(page_zip_header_cmp(page_zip, block->page.frame()));
 
 	heap_no = rec_get_heap_no_new(rec);
 	ut_ad(heap_no >= PAGE_HEAP_NO_USER_LOW);
@@ -4211,7 +4211,7 @@ clear_page_zip:
 void page_zip_rec_set_deleted(buf_block_t *block, rec_t *rec, bool flag,
                               mtr_t *mtr)
 {
-  ut_ad(page_align(rec) == block->page.frame);
+  ut_ad(page_align(rec) == block->page.frame());
   byte *slot= page_zip_dir_find(&block->page.zip, page_offset(rec));
   byte b= *slot;
   if (flag)
@@ -4220,7 +4220,7 @@ void page_zip_rec_set_deleted(buf_block_t *block, rec_t *rec, bool flag,
     b&= byte(~(PAGE_ZIP_DIR_SLOT_DEL >> 8));
   mtr->zmemcpy<mtr_t::MAYBE_NOP>(*block, slot, &b, 1);
 #ifdef UNIV_ZIP_DEBUG
-  ut_a(page_zip_validate(&block->page.zip, block->page.frame, nullptr));
+  ut_a(page_zip_validate(&block->page.zip, block->page.frame(), nullptr));
 #endif /* UNIV_ZIP_DEBUG */
 }
 
@@ -4235,7 +4235,7 @@ page_zip_rec_set_owned(
 	ulint		flag,	/*!< in: the owned flag (nonzero=TRUE) */
 	mtr_t*		mtr)	/*!< in/out: mini-transaction */
 {
-  ut_ad(page_align(rec) == block->page.frame);
+  ut_ad(page_align(rec) == block->page.frame());
   page_zip_des_t *const page_zip= &block->page.zip;
   byte *slot= page_zip_dir_find(page_zip, page_offset(rec));
   MEM_CHECK_DEFINED(page_zip->data, page_zip_get_size(page_zip));
@@ -4258,8 +4258,8 @@ page_zip_dir_insert(
 	byte*		rec,	/*!< in: record to insert */
 	mtr_t*		mtr)	/*!< in/out: mini-transaction */
 {
-	ut_ad(page_align(cursor->rec) == cursor->block->page.frame);
-	ut_ad(page_align(rec) == cursor->block->page.frame);
+	ut_ad(page_align(cursor->rec) == cursor->block->page.frame());
+	ut_ad(page_align(rec) == cursor->block->page.frame());
 	page_zip_des_t *const page_zip= &cursor->block->page.zip;
 
 	ulint	n_dense;
@@ -4355,7 +4355,7 @@ void page_zip_dir_delete(buf_block_t *block, byte *rec,
   page_t *const page= page_align(rec);
   page_zip_des_t *const page_zip= &block->page.zip;
 
-  ut_ad(page == block->page.frame);
+  ut_ad(page == block->page.frame());
   ut_ad(rec_offs_validate(rec, index, offsets));
   ut_ad(rec_offs_comp(offsets));
 
@@ -4469,7 +4469,7 @@ page_zip_reorganize(
 	mtr_t*		mtr,	/*!< in: mini-transaction */
 	bool		restore)/*!< whether to restore on failure */
 {
-	page_t*		page		= block->page.frame;
+	page_t*		page		= block->page.frame();
 	buf_block_t*	temp_block;
 	page_t*		temp_page;
 
@@ -4488,7 +4488,7 @@ page_zip_reorganize(
 
 	temp_block = buf_block_alloc();
 	btr_search_drop_page_hash_index(block, false);
-	temp_page = temp_block->page.frame;
+	temp_page = temp_block->page.frame();
 
 	/* Copy the old page to temporary space */
 	memcpy_aligned<UNIV_PAGE_SIZE_MIN>(temp_page, page, srv_page_size);
@@ -4577,7 +4577,7 @@ page_zip_copy_recs(
 	dict_index_t*		index,		/*!< in: index of the B-tree */
 	mtr_t*			mtr)		/*!< in: mini-transaction */
 {
-	page_t* page = block->page.frame;
+	page_t* page = block->page.frame();
 	page_zip_des_t* page_zip = &block->page.zip;
 
 	ut_ad(mtr->memo_contains_flagged(block, MTR_MEMO_PAGE_X_FIX));

@@ -549,7 +549,9 @@ public:
   /** lock covering the contents of frame */
   block_lock lock;
   /** pointer to aligned, uncompressed page frame of innodb_page_size */
-  byte *frame;
+  byte *frame_;
+
+  byte *frame() const { return frame_; }
   /* @} */
   /** ROW_FORMAT=COMPRESSED page; zip.data (but not the data it points to)
   is also protected by buf_pool.mutex;
@@ -619,7 +621,7 @@ public:
     id_(b.id_), hash(b.hash),
     oldest_modification_(b.oldest_modification_),
     lock() /* not copied */,
-    frame(b.frame), zip(b.zip),
+    frame_(b.frame_), zip(b.zip),
 #ifdef UNIV_DEBUG
     in_zip_hash(b.in_zip_hash), in_LRU_list(b.in_LRU_list),
     in_page_hash(b.in_page_hash), in_free_list(b.in_free_list),
@@ -670,7 +672,7 @@ public:
 
   /** @return if this belongs to buf_pool.unzip_LRU */
   bool belongs_to_unzip_LRU() const
-  { return UNIV_LIKELY_NULL(zip.data) && frame; }
+  { return UNIV_LIKELY_NULL(zip.data) && frame(); }
 
   bool is_freed() const
   { const auto s= state(); ut_ad(s >= FREED); return s < UNFIXED; }
@@ -834,8 +836,8 @@ public:
 
 #ifdef UNIV_DEBUG
   /** @return whether the address is within the page frame */
-  bool is_physical_address(const byte *p) const
-  { return size_t(p - frame) < physical_size(); }
+  bool is_physical_address(const byte* p) const
+  { return size_t(p - frame()) < physical_size(); }
 #endif
 
   /** @return the byte offset of the page within a file */
@@ -1018,7 +1020,7 @@ struct buf_block_t{
 Compute the hash fold value for blocks in buf_pool.zip_hash. */
 /* @{ */
 #define BUF_POOL_ZIP_FOLD_PTR(ptr) (ulint(ptr) >> srv_page_size_shift)
-#define BUF_POOL_ZIP_FOLD(b) BUF_POOL_ZIP_FOLD_PTR((b)->page.frame)
+#define BUF_POOL_ZIP_FOLD(b) BUF_POOL_ZIP_FOLD_PTR((b)->page.frame())
 #define BUF_POOL_ZIP_FOLD_BPAGE(b) BUF_POOL_ZIP_FOLD((buf_block_t*) (b))
 /* @} */
 
@@ -1211,7 +1213,7 @@ class buf_pool_t
     size_t mem_size() const { return mem_pfx.m_size; }
 
     /** Register the chunk */
-    void reg() { map_reg->emplace(map::value_type(blocks->page.frame, this)); }
+    void reg() { map_reg->emplace(map::value_type(blocks->page.frame(), this)); }
 
     /** Allocate a chunk of buffer frames.
     @param bytes    requested size
@@ -1316,8 +1318,8 @@ public:
     for (const chunk_t *chunk= chunks + n_chunks_new,
          * const echunk= chunks + n_chunks;
          chunk != echunk; chunk++)
-      if (ptr >= chunk->blocks->page.frame &&
-          ptr < (chunk->blocks + chunk->size - 1)->page.frame + srv_page_size)
+      if (ptr >= chunk->blocks->page.frame() &&
+          ptr < (chunk->blocks + chunk->size - 1)->page.frame() + srv_page_size)
         return true;
     return false;
   }
@@ -1682,7 +1684,7 @@ public:
   indexed by page_id_t. Protected by both mutex and page_hash.lock_get(). */
   page_hash_table page_hash;
 
-  /** map of buf_page_t::frame to buf_block_t blocks that belong
+  /** map of buf_page_t::frame() to buf_block_t blocks that belong
   to buf_buddy_alloc(); protected by buf_pool.mutex */
   hash_table_t zip_hash;
 	Atomic_counter<ulint>

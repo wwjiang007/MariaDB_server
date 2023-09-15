@@ -639,7 +639,7 @@ fill_lock_data(
 		return(TRUE);
 	}
 
-	page = block->page.frame;
+	page = block->page.frame();
 
 	rec_offs_init(offsets_onstack);
 	offsets = offsets_onstack;

@@ -320,7 +320,7 @@ static buf_block_t* row_undo_rec_get(undo_node_t* node)
 
 	buf_page_make_young_if_needed(&undo_page->page);
 
-	node->undo_rec = undo_page->page.frame + undo->top_offset;
+	node->undo_rec = undo_page->page.frame() + undo->top_offset;
 
 	buf_block_t* prev_page = undo_page;
 	if (trx_undo_rec_t* prev_rec = trx_undo_get_prev_rec(

@@ -410,7 +410,7 @@ inline trx_id_t page_get_max_trx_id(const page_t *page)
 Set the number of owned records.
 @tparam compressed    whether to update any ROW_FORMAT=COMPRESSED page as well
 @param[in,out]  block   index page
-@param[in,out]  rec     record in block->page.frame
+@param[in,out]  rec     record in block->page.frame()
 @param[in]      n_owned number of records skipped in the sparse page directory
 @param[in]      comp    whether ROW_FORMAT is one of COMPACT,DYNAMIC,COMPRESSED
 @param[in,out]  mtr     mini-transaction */
@@ -418,7 +418,7 @@ template<bool compressed>
 inline void page_rec_set_n_owned(buf_block_t *block, rec_t *rec, ulint n_owned,
                                  bool comp, mtr_t *mtr)
 {
-  ut_ad(block->page.frame == page_align(rec));
+  ut_ad(block->page.frame() == page_align(rec));
   ut_ad(comp == (page_rec_is_comp(rec) != 0));
 
   if (page_zip_des_t *page_zip= compressed

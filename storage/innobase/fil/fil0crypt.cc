@@ -379,7 +379,7 @@ void fil_space_crypt_t::write_page0(buf_block_t* block, mtr_t* mtr)
 {
 	const ulint offset = FSP_HEADER_OFFSET
 		+ fsp_header_get_encryption_offset(block->zip_size());
-	byte* b = block->page.frame + offset;
+	byte* b = block->page.frame() + offset;
 
 	mtr->memcpy<mtr_t::MAYBE_NOP>(*block, b, CRYPT_MAGIC, MAGIC_SZ);
 
@@ -914,7 +914,7 @@ static inline void fil_crypt_read_crypt_data(fil_space_t *space)
   {
     mysql_mutex_lock(&fil_system.mutex);
     if (!space->crypt_data && !space->is_stopping())
-      space->crypt_data= fil_space_read_crypt_data(zip_size, b->page.frame);
+      space->crypt_data= fil_space_read_crypt_data(zip_size, b->page.frame());
     mysql_mutex_unlock(&fil_system.mutex);
   }
   mtr.commit();
@@ -1753,7 +1753,7 @@ fil_crypt_rotate_page(
 							     offset, &mtr,
 							     &sleeptime_ms)) {
 		bool modified = false;
-		byte* frame = block->page.frame;
+		byte* frame = block->page.frame();
 		const lsn_t block_lsn = mach_read_from_8(FIL_PAGE_LSN + frame);
 		uint kv = buf_page_get_key_version(frame, space->flags);
 

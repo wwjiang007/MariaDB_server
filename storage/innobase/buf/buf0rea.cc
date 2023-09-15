@@ -312,7 +312,7 @@ buf_read_page_low(
 		 "read page " << page_id << " zip_size=" << zip_size
 		 << " unzip=" << unzip << ',' << (sync ? "sync" : "async"));
 
-	void* dst = zip_size ? bpage->zip.data : bpage->frame;
+	void* dst = zip_size ? bpage->zip.data : bpage->frame();
 	const ulint len = zip_size ? zip_size : srv_page_size;
 
 	auto fio = space->io(IORequest(sync
@@ -593,7 +593,7 @@ failed:
       on the page, we do not acquire an s-latch on the page, this is to
       prevent deadlocks. The hash_lock is only protecting the
       buf_pool.page_hash for page i, not the bpage contents itself. */
-      const byte *f= bpage->frame;
+      const byte *f= bpage->frame();
       if (UNIV_UNLIKELY(!f))
         f= bpage->zip.data;
       uint32_t prev= mach_read_from_4(my_assume_aligned<4>(f + FIL_PAGE_PREV));

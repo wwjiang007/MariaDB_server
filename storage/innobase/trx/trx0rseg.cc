@@ -140,7 +140,7 @@ static dberr_t trx_rseg_update_wsrep_checkpoint(const XID* xid, mtr_t* mtr)
   if (UNIV_UNLIKELY(!rseg_header))
     return err;
 
-  page_t *rseg_header_page= rseg_header->page.frame;
+  page_t *rseg_header_page= rseg_header->page.frame();
 
   /* We must make check against wsrep_uuid here, the
   trx_rseg_update_wsrep_checkpoint() writes over wsrep_uuid with xid
@@ -162,7 +162,7 @@ static dberr_t trx_rseg_update_wsrep_checkpoint(const XID* xid, mtr_t* mtr)
     for (ulint rseg_id= 1; rseg_id < TRX_SYS_N_RSEGS; ++rseg_id)
       if (buf_block_t* block= trx_sys.rseg_array[rseg_id].get(mtr, &err))
         mtr->memset(block,
-                    TRX_RSEG + TRX_RSEG_WSREP_XID_INFO + block->page.frame,
+                    TRX_RSEG + TRX_RSEG_WSREP_XID_INFO + block->page.frame(),
                     TRX_RSEG_WSREP_XID_DATA + XIDDATASIZE -
                     TRX_RSEG_WSREP_XID_INFO, 0);
   return err;
@@ -259,7 +259,7 @@ bool trx_rseg_read_wsrep_checkpoint(XID& xid)
 		if (UNIV_UNLIKELY(!sys)) {
 			continue;
 		}
-		const page_t* sys_page = sys->page.frame;
+		const page_t* sys_page = sys->page.frame();
 		const uint32_t page_no = trx_sysf_rseg_get_page_no(
 			sys_page, rseg_id);
 
@@ -276,7 +276,7 @@ bool trx_rseg_read_wsrep_checkpoint(XID& xid)
 			continue;
 		}
 
-		const page_t* rseg_header_page = rseg_header->page.frame;
+		const page_t* rseg_header_page = rseg_header->page.frame();
 
 		if (mach_read_from_4(TRX_RSEG + TRX_RSEG_FORMAT
 				     + rseg_header_page)) {
@@ -352,7 +352,7 @@ buf_block_t *trx_rseg_header_create(fil_space_t *space, ulint rseg_id,
     fseg_create(space, TRX_RSEG + TRX_RSEG_FSEG_HEADER, mtr, err);
   if (block)
   {
-    page_t *page= block->page.frame;
+    page_t *page= block->page.frame();
     ut_ad(0 == mach_read_from_4(TRX_RSEG_FORMAT + TRX_RSEG + page));
     ut_ad(0 == mach_read_from_4(TRX_RSEG_HISTORY_SIZE + TRX_RSEG + page));
     ut_ad(0 == mach_read_from_4(TRX_RSEG_MAX_TRX_ID + TRX_RSEG + page));
@@ -464,7 +464,7 @@ static dberr_t trx_rseg_mem_restore(trx_rseg_t *rseg, mtr_t *mtr)
                      &err);
   if (!rseg_hdr)
     return err;
-  const page_t *rseg_hdr_page = rseg_hdr->page.frame;
+  const page_t *rseg_hdr_page = rseg_hdr->page.frame();
 
   if (!mach_read_from_4(TRX_RSEG + TRX_RSEG_FORMAT + rseg_hdr_page))
   {
@@ -542,7 +542,7 @@ static dberr_t trx_rseg_mem_restore(trx_rseg_t *rseg, mtr_t *mtr)
     if (!block)
       return err;
 
-    const page_t *page= block->page.frame;
+    const page_t *page= block->page.frame();
 
     trx_id_t id= mach_read_from_8(page + node_addr.boffset + TRX_UNDO_TRX_ID);
     if (id > rseg->needs_purge)
@@ -606,7 +606,7 @@ dberr_t trx_rseg_array_init()
 	for (ulint rseg_id = 0; rseg_id < TRX_SYS_N_RSEGS; rseg_id++) {
 		mtr.start();
 		if (const buf_block_t* sys = trx_sysf_get(&mtr, false)) {
-			const page_t* sys_page = sys->page.frame;
+			const page_t* sys_page = sys->page.frame();
 
 			if (rseg_id == 0) {
 				/* In case this is an upgrade from
@@ -683,7 +683,7 @@ dberr_t trx_rseg_array_init()
 		/* Finally, clear WSREP XID in TRX_SYS page. */
 		buf_block_t* sys = trx_sysf_get(&mtr);
 		mtr.memset(sys, TRX_SYS + TRX_SYS_WSREP_XID_INFO
-			   + sys->page.frame,
+			   + sys->page.frame(),
 			   TRX_SYS_WSREP_XID_LEN, 0);
 		mtr.commit();
 	}

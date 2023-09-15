@@ -213,7 +213,7 @@ unreadable:
 		goto unreadable;
 	}
 
-	const page_t* const r = root->page.frame;
+	const page_t* const r = root->page.frame();
 
 	if (btr_cur_instant_root_init(index, r)) {
 		goto corrupted;
@@ -366,7 +366,7 @@ incompatible:
 			goto incompatible;
 		}
 
-		const page_t* const page = block->page.frame;
+		const page_t* const page = block->page.frame();
 
 		if (fil_page_get_type(page) != FIL_PAGE_TYPE_BLOB
 		    || mach_read_from_4(&page[FIL_PAGE_DATA
@@ -760,7 +760,7 @@ static bool btr_cur_need_opposite_intention(const buf_page_t &bpage,
   if (UNIV_LIKELY_NULL(bpage.zip.data) &&
       !page_zip_available(&bpage.zip, is_clust, node_ptr_max_size, 1))
     return true;
-  const page_t *const page= bpage.frame;
+  const page_t *const page= bpage.frame();
   if (lock_intention != BTR_INTENTION_INSERT)
   {
     /* We compensate also for btr_cur_compress_recommendation() */
@@ -956,7 +956,7 @@ int btr_latch_prev(buf_block_t *block, page_id_t page_id, ulint zip_size,
   const auto prev_savepoint= mtr->get_savepoint();
   ut_ad(block == mtr->at_savepoint(prev_savepoint - 1));
 
-  const page_t *const page= block->page.frame;
+  const page_t *const page= block->page.frame();
   page_id.set_page_no(btr_page_get_prev(page));
   buf_block_t *prev= buf_page_get_gen(page_id, zip_size, RW_NO_LATCH, nullptr,
                                       BUF_GET, mtr, err, false);
@@ -993,7 +993,7 @@ int btr_latch_prev(buf_block_t *block, page_id_t page_id, ulint zip_size,
   mtr->upgrade_buffer_fix(prev_savepoint - 1, rw_latch);
 
  prev_latched:
-  const page_t *const p= prev->page.frame;
+  const page_t *const p= prev->page.frame();
   if (memcmp_aligned<2>(FIL_PAGE_TYPE + p, FIL_PAGE_TYPE + page, 2) ||
       memcmp_aligned<2>(PAGE_HEADER + PAGE_INDEX_ID + p,
                         PAGE_HEADER + PAGE_INDEX_ID + page, 8) ||
@@ -1257,7 +1257,7 @@ dberr_t btr_cur_t::search_leaf(const dtuple_t *tuple, page_cur_mode_t mode,
     goto search_loop;
   }
 
-  const page_t *const page= block->page.frame;
+  const page_t *const page= block->page.frame();
 
   if (!!page_is_comp(page) != index()->table->not_redundant() ||
       btr_page_get_index_id(page) != index()->id ||
@@ -1656,7 +1656,7 @@ dberr_t btr_cur_t::pessimistic_search_leaf(const dtuple_t *tuple,
   low_match= 0;
   low_bytes= 0;
 
-  const page_t *page= block->page.frame;
+  const page_t *page= block->page.frame();
   ulint height= btr_page_get_level(page);
   tree_height= height + 1;
   mem_heap_t *heap= nullptr;
@@ -1722,7 +1722,7 @@ dberr_t btr_cur_t::pessimistic_search_leaf(const dtuple_t *tuple,
     goto func_exit;
   }
 
-  page= block->page.frame;
+  page= block->page.frame();
 
   if (!!page_is_comp(page) != index()->table->not_redundant() ||
       btr_page_get_index_id(page) != index()->id ||
@@ -1825,7 +1825,7 @@ search_loop:
   else
     btr_cur_nonleaf_make_young(&block->page);
 
-  page= block->page.frame;
+  page= block->page.frame();
 #ifdef UNIV_ZIP_DEBUG
   if (const page_zip_des_t *page_zip= buf_block_get_page_zip(block))
     ut_a(page_zip_validate(page_zip, page, index));
@@ -2287,7 +2287,7 @@ Prefetch siblings of the leaf for the pessimistic operation.
 static void btr_cur_prefetch_siblings(const buf_block_t *block,
                                       const dict_index_t *index)
 {
-  const page_t *page= block->page.frame;
+  const page_t *page= block->page.frame();
 
   ut_ad(page_is_leaf(page));
 
@@ -3447,7 +3447,7 @@ static void btr_cur_trim_alter_metadata(dtuple_t* entry,
 		mtr.commit();
 		return;
 	}
-	page_t* page = block->page.frame;
+	page_t* page = block->page.frame();
 	ut_ad(fil_page_get_type(page) == FIL_PAGE_TYPE_BLOB);
 	ut_ad(mach_read_from_4(&page
 			       [FIL_PAGE_DATA + BTR_BLOB_HDR_NEXT_PAGE_NO])
@@ -3868,7 +3868,7 @@ btr_cur_pess_upd_restore_supremum(
 		return DB_CORRUPTION;
 	}
 
-	ut_d(const page_t* prev_page = prev_block->page.frame);
+	ut_d(const page_t* prev_page = prev_block->page.frame());
 	ut_ad(!memcmp_aligned<4>(prev_page + FIL_PAGE_NEXT,
 				 page + FIL_PAGE_OFFSET, 4));
 
@@ -3939,7 +3939,7 @@ btr_cur_pessimistic_update(
 	ut_ad(mtr->memo_contains_flagged(block, MTR_MEMO_PAGE_X_FIX));
 #ifdef UNIV_ZIP_DEBUG
 	ut_a(!page_zip
-	     || page_zip_validate(page_zip, block->page.frame, index));
+	     || page_zip_validate(page_zip, block->page.frame(), index));
 #endif /* UNIV_ZIP_DEBUG */
 	ut_ad(!page_zip || !index->table->is_temporary());
 	/* The insert buffer tree should never be updated in place. */
@@ -4412,7 +4412,7 @@ btr_cur_del_mark_set_clust_rec(
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(!!page_rec_is_comp(rec) == dict_table_is_comp(index->table));
-	ut_ad(block->page.frame == page_align(rec));
+	ut_ad(block->page.frame() == page_align(rec));
 	ut_ad(page_rec_is_leaf(rec));
 	ut_ad(mtr->is_named_space(index->table->space));
 
@@ -5090,7 +5090,7 @@ public:
       mtr.rollback_to_savepoint(1, 2);
     }
 
-    m_page_cur.rec= m_page_cur.block->page.frame;
+    m_page_cur.rec= m_page_cur.block->page.frame();
 
     return level == ULINT_UNDEFINED ||
       btr_page_get_level(m_page_cur.rec) == level;
@@ -5310,7 +5310,7 @@ static ha_rows btr_estimate_n_rows_in_range_on_level(
     if (!block)
       goto inexact;
 
-    page= block->page.frame;
+    page= block->page.frame();
 
     if (btr_page_get_level(page) != level)
       goto inexact;
@@ -5893,7 +5893,7 @@ struct btr_blob_log_check_t {
 		  m_op(op)
 	{
 		ut_ad(rec_offs_validate(*m_rec, m_pcur->index(), m_offsets));
-		ut_ad((*m_block)->page.frame == page_align(*m_rec));
+		ut_ad((*m_block)->page.frame() == page_align(*m_rec));
 		ut_ad(*m_rec == btr_pcur_get_rec(m_pcur));
 	}
 
@@ -6012,7 +6012,7 @@ btr_store_big_rec_extern_fields(
 	      || btr_mtr->memo_contains_flagged(&index->lock, MTR_MEMO_X_LOCK
 						| MTR_MEMO_SX_LOCK));
 	ut_ad(btr_mtr->memo_contains_flagged(rec_block, MTR_MEMO_PAGE_X_FIX));
-	ut_ad(rec_block->page.frame == page_align(rec));
+	ut_ad(rec_block->page.frame() == page_align(rec));
 	ut_a(dict_index_is_clust(index));
 
 	if (!fil_page_index_page_check(page_align(rec))) {
@@ -6161,7 +6161,7 @@ alloc_fail:
                                                     rec_block->zip_size(),
                                                     RW_X_LATCH, nullptr,
                                                     BUF_GET, &mtr, &error)) {
-				page_t* prev = prev_block->page.frame;
+				page_t* prev = prev_block->page.frame();
 
 				if (page_zip) {
 					mtr.write<4>(*prev_block,
@@ -6182,7 +6182,7 @@ alloc_fail:
 				goto alloc_fail;
 			}
 
-			page_t* page = block->page.frame;
+			page_t* page = block->page.frame();
 
 			ut_ad(!page_has_siblings(page));
 			ut_ad(!fil_page_get_type(page));
@@ -6517,7 +6517,7 @@ skip_free:
 		ut_ad(!btr_search_check_marked_free_index(block));
 #endif
 
-		const page_t* page = ext_block->page.frame;
+		const page_t* page = ext_block->page.frame();
 
 		if (ext_zip_size) {
 			/* Note that page_zip will be NULL
@@ -6698,7 +6698,7 @@ invalid:
 			buf_read_ahead_linear(id, 0, false);
 		}
 
-		page = block->page.frame;
+		page = block->page.frame();
 
 		if (btr_check_blob_fil_page_type(*block, page, "read")) {
 			goto invalid;

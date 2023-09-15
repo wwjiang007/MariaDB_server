@@ -50,7 +50,7 @@ void Block_hint::buffer_fix_block_if_still_valid()
     transactional_shared_lock_guard<page_hash_latch> g
       {buf_pool.page_hash.lock_get(cell)};
     if (buf_pool.is_uncompressed(m_block) && m_page_id == m_block->page.id() &&
-        m_block->page.frame && m_block->page.in_file())
+        m_block->page.frame() && m_block->page.in_file())
       m_block->page.fix();
     else
       clear();

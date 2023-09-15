@@ -1113,7 +1113,7 @@ btr_cur_t::open_random_leaf(rec_offs *&offsets, mem_heap_t *&heap, mtr_t &mtr)
          btr_block_get(*index(), offset, RW_S_LATCH, merge, &mtr, &err))
   {
     page_cur.block= block;
-    page_cur.rec= block->page.frame;
+    page_cur.rec= block->page.frame();
 
     if (height == ULINT_UNDEFINED)
     {
@@ -1512,7 +1512,7 @@ invalid:
 			goto invalid;
 		}
 
-		const page_t* page = root->page.frame;
+		const page_t* page = root->page.frame();
 		mtr.x_lock_space(index->table->space);
 
 		ulint dummy, size;
@@ -1667,7 +1667,7 @@ static dberr_t page_cur_open_level(page_cur_t *page_cur, ulint level,
     if (!block)
       break;
 
-    const page_t *p= block->page.frame;
+    const page_t *p= block->page.frame();
     const uint32_t l= btr_page_get_level(p);
 
     if (height == ULINT_UNDEFINED)
@@ -2289,7 +2289,7 @@ dict_stats_analyze_index_below_cur(
 			goto func_exit;
 		}
 
-		page = block->page.frame;
+		page = block->page.frame();
 
 		if (page_is_leaf(page)) {
 			/* leaf level */
@@ -2720,7 +2720,7 @@ empty_index:
 		DBUG_RETURN(result);
 	}
 
-	const page_t *page = root->page.frame;
+	const page_t *page = root->page.frame();
 
 	uint16_t root_level = btr_page_get_level(page);
 	mtr.x_lock_space(index->table->space);
@@ -2837,7 +2837,7 @@ empty_index:
 		buf_block_t *root = btr_root_block_get(index, RW_S_LATCH,
 						       &mtr, &err);
 		if (!root
-		    || root_level != btr_page_get_level(root->page.frame)
+		    || root_level != btr_page_get_level(root->page.frame())
 		    || index->table->bulk_trx_id != bulk_trx_id) {
 			/* Just quit if the tree has changed beyond
 			recognition here. The old stats from previous

@@ -52,7 +52,7 @@ rtr_page_cal_mbr(
 
 	mbr = reinterpret_cast<double*>(rtr_mbr);
 
-	const page_t* page = block->page.frame;
+	const page_t* page = block->page.frame();
 
 	const rec_t* rec = page_rec_get_next_const(page_get_infimum_rec(page));
 	if (UNIV_UNLIKELY(!rec)) {

@@ -99,7 +99,7 @@ start_again:
     return false;
   }
 
-  page_t *const trx_sys_page= trx_sys_block->page.frame;
+  page_t *const trx_sys_page= trx_sys_block->page.frame();
 
   if (mach_read_from_4(TRX_SYS_DOUBLEWRITE + TRX_SYS_DOUBLEWRITE_MAGIC +
                        trx_sys_page) ==
@@ -176,7 +176,7 @@ fail:
     /* We only do this in the debug build, to ensure that the check in
     buf_flush_init_for_writing() will see a valid page type. The
     flushes of new_block are actually unnecessary here.  */
-    ut_d(mtr.write<2>(*new_block, FIL_PAGE_TYPE + new_block->page.frame,
+    ut_d(mtr.write<2>(*new_block, FIL_PAGE_TYPE + new_block->page.frame(),
                       FIL_PAGE_TYPE_SYS));
 
     if (i == size / 2)
@@ -530,7 +530,7 @@ static void buf_dblwr_check_page_lsn(const buf_page_t &b, const byte *page)
 static void buf_dblwr_check_block(const buf_page_t *bpage)
 {
   ut_ad(bpage->in_file());
-  const page_t *page= bpage->frame;
+  const page_t *page= bpage->frame();
   ut_ad(page);
 
   switch (fil_page_get_type(page)) {
@@ -629,7 +629,7 @@ static void *get_frame(const IORequest &request)
   if (request.slot)
     return request.slot->out_buf;
   const buf_page_t *bpage= request.bpage;
-  return bpage->zip.data ? bpage->zip.data : bpage->frame;
+  return bpage->zip.data ? bpage->zip.data : bpage->frame();
 }
 
 void buf_dblwr_t::flush_buffered_writes_completed(const IORequest &request)

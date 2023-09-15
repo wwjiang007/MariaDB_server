@@ -405,7 +405,7 @@ btr_search_update_block_hash_info(btr_search_t* info, buf_block_t* block)
 	ut_ad(block->page.lock.have_x() || block->page.lock.have_s());
 	ut_ad(info->magic_n == BTR_SEARCH_MAGIC_N);
 
-	const page_t* const page = block->page.frame;
+	const page_t* const page = block->page.frame();
 	ut_ad(page);
 
 	info->last_hash_succ = FALSE;
@@ -479,7 +479,7 @@ static bool ha_insert_for_fold(hash_table_t *table, mem_heap_t* heap,
                                const rec_t *data)
 {
 #if defined UNIV_AHI_DEBUG || defined UNIV_DEBUG
-  ut_a(block->page.frame == page_align(data));
+  ut_a(block->page.frame() == page_align(data));
 #endif /* UNIV_AHI_DEBUG || UNIV_DEBUG */
   ut_ad(btr_search_enabled);
 
@@ -492,7 +492,7 @@ static bool ha_insert_for_fold(hash_table_t *table, mem_heap_t* heap,
     {
 #if defined UNIV_AHI_DEBUG || defined UNIV_DEBUG
       buf_block_t *prev_block= prev->block;
-      ut_a(prev_block->page.frame == page_align(prev->data));
+      ut_a(prev_block->page.frame() == page_align(prev->data));
       ut_a(prev_block->n_pointers-- < MAX_N_POINTERS);
       ut_a(block->n_pointers++ < MAX_N_POINTERS);
 
@@ -540,7 +540,7 @@ static void ha_delete_hash_node(hash_table_t *table, mem_heap_t *heap,
 {
   ut_ad(btr_search_enabled);
 #if defined UNIV_AHI_DEBUG || defined UNIV_DEBUG
-  ut_a(del_node->block->page.frame == page_align(del_node->data));
+  ut_a(del_node->block->page.frame() == page_align(del_node->data));
   ut_a(del_node->block->n_pointers-- < MAX_N_POINTERS);
 #endif /* UNIV_AHI_DEBUG || UNIV_DEBUG */
 
@@ -640,7 +640,7 @@ static bool ha_search_and_update_if_found(hash_table_t *table, ulint fold,
                                           const rec_t *new_data)
 {
 #if defined UNIV_AHI_DEBUG || defined UNIV_DEBUG
-  ut_a(new_block->page.frame == page_align(new_data));
+  ut_a(new_block->page.frame() == page_align(new_data));
 #endif /* UNIV_AHI_DEBUG || UNIV_DEBUG */
 
   if (!btr_search_enabled)
@@ -688,8 +688,8 @@ btr_search_update_hash_ref(
 	ut_ad(cursor->flag == BTR_CUR_HASH_FAIL);
 
 	ut_ad(block->page.lock.have_x() || block->page.lock.have_s());
-	ut_ad(page_align(btr_cur_get_rec(cursor)) == block->page.frame);
-	ut_ad(page_is_leaf(block->page.frame));
+	ut_ad(page_align(btr_cur_get_rec(cursor)) == block->page.frame());
+	ut_ad(page_is_leaf(block->page.frame()));
 	assert_block_ahi_valid(block);
 
 	dict_index_t* index = block->index;
@@ -1006,14 +1006,14 @@ inline buf_block_t* buf_pool_t::block_from_ahi(const byte *ptr) const
     ? chunk_map->rbegin()->second
     : (--it)->second;
 
-  const size_t offs= size_t(ptr - chunk->blocks->page.frame) >>
+  const size_t offs= size_t(ptr - chunk->blocks->page.frame()) >>
     srv_page_size_shift;
   ut_a(offs < chunk->size);
 
   buf_block_t *block= &chunk->blocks[offs];
   /* buf_pool_t::chunk_t::init() invokes buf_block_init() so that
-  block[n].frame == block->page.frame + n * srv_page_size.  Check it. */
-  ut_ad(block->page.frame == page_align(ptr));
+  block[n].frame() == block->page.frame() + n * srv_page_size.  Check it. */
+  ut_ad(block->page.frame() == page_align(ptr));
   /* Read the state of the block without holding hash_lock.
   A state transition to REMOVE_HASH is possible during
   this execution. */
@@ -1165,7 +1165,7 @@ block_and_ahi_release_and_fail:
 	is positioned on. We cannot look at the next of the previous
 	record to determine if our guess for the cursor position is
 	right. */
-	if (index_id != btr_page_get_index_id(block->page.frame)
+	if (index_id != btr_page_get_index_id(block->page.frame())
 	    || !btr_search_check_guess(cursor, false, tuple, mode)) {
 		mtr->release_last_page();
 		goto fail;
@@ -1214,7 +1214,7 @@ retry:
 	      || block->page.lock.have_any());
 	ut_ad(state < buf_page_t::READ_FIX || state >= buf_page_t::WRITE_FIX);
 
-	const page_t* const page = block->page.frame;
+	const page_t* const page = block->page.frame();
 
 	ut_ad(page_is_leaf(page));
 
@@ -1467,7 +1467,7 @@ btr_search_build_page_hash_index(
 	ut_ad(block->page.lock.have_x() || block->page.lock.have_s());
 	ut_ad(block->page.id().page_no() >= 3);
 
-	const page_t* const page = block->page.frame;
+	const page_t* const page = block->page.frame();
 	ut_ad(page_is_leaf(page));
 
 	ahi_latch->rd_lock(SRW_LOCK_CALL);
@@ -2213,7 +2213,7 @@ state_ok:
 			ut_ad(block->page.id().space()
 			      == block->index->table->space_id);
 
-			const page_t* page = block->page.frame;
+			const page_t* page = block->page.frame();
 
 			page_index_id = btr_page_get_index_id(page);
 
@@ -2312,7 +2312,7 @@ bool btr_search_validate(THD *thd)
 #ifdef UNIV_DEBUG
 bool btr_search_check_marked_free_index(const buf_block_t *block)
 {
-  const index_id_t index_id= btr_page_get_index_id(block->page.frame);
+  const index_id_t index_id= btr_page_get_index_id(block->page.frame());
   auto part= btr_search_sys.get_part(index_id, block->page.id().space());
 
   part->latch.rd_lock(SRW_LOCK_CALL);

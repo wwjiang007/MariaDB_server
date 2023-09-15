@@ -210,7 +210,7 @@ page_set_autoinc(
                                    MTR_MEMO_PAGE_SX_FIX));
 
   byte *field= my_assume_aligned<8>(PAGE_HEADER + PAGE_ROOT_AUTO_INC +
-                                    block->page.frame);
+                                    block->page.frame());
   ib_uint64_t old= mach_read_from_8(field);
   if (old == autoinc || (old > autoinc && !reset))
     return; /* nothing to update */
@@ -266,7 +266,7 @@ page_t* page_create_low(const buf_block_t* block, bool comp)
 	compile_time_assert(PAGE_BTR_IBUF_FREE_LIST_NODE + FLST_NODE_SIZE
 			    <= PAGE_DATA);
 
-	page = block->page.frame;
+	page = block->page.frame();
 
 	fil_page_set_type(page, FIL_PAGE_INDEX);
 
@@ -451,7 +451,7 @@ page_copy_rec_list_end_no_locks(
 	dict_index_t*	index,		/*!< in: record descriptor */
 	mtr_t*		mtr)		/*!< in: mtr */
 {
-	page_t*		new_page	= new_block->page.frame;
+	page_t*		new_page	= new_block->page.frame();
 	page_cur_t	cur1;
 	page_cur_t	cur2;
 	mem_heap_t*	heap		= NULL;
@@ -523,13 +523,13 @@ page_copy_rec_list_end(
 	mtr_t*		mtr,		/*!< in/out: mini-transaction */
 	dberr_t*	err)		/*!< out: error code */
 {
-	page_t*		new_page	= new_block->page.frame;
+	page_t*		new_page	= new_block->page.frame();
 	page_zip_des_t*	new_page_zip	= buf_block_get_page_zip(new_block);
 	page_t*		page		= page_align(rec);
 	rec_t*		ret		= page_rec_get_next(
 		page_get_infimum_rec(new_page));
 	ulint		num_moved	= 0;
-	ut_ad(block->page.frame == page);
+	ut_ad(block->page.frame() == page);
 
 	if (UNIV_UNLIKELY(!ret)) {
 		*err = DB_CORRUPTION;
@@ -548,7 +548,7 @@ page_copy_rec_list_end(
 		ut_a(page_zip_validate_low(page_zip, page, index, TRUE));
 	}
 #endif /* UNIV_ZIP_DEBUG */
-	ut_ad(block->page.frame == page);
+	ut_ad(block->page.frame() == page);
 	ut_ad(page_is_leaf(page) == page_is_leaf(new_page));
 	ut_ad(page_is_comp(page) == page_is_comp(new_page));
 	/* Here, "ret" may be pointing to a user record or the
@@ -692,9 +692,9 @@ page_copy_rec_list_start(
 	mtr_t*		mtr,		/*!< in/out: mini-transaction */
 	dberr_t*	err)		/*!< out: error code */
 {
-	ut_ad(page_align(rec) == block->page.frame);
+	ut_ad(page_align(rec) == block->page.frame());
 
-	page_t*		new_page	= new_block->page.frame;
+	page_t*		new_page	= new_block->page.frame();
 	page_zip_des_t*	new_page_zip	= buf_block_get_page_zip(new_block);
 	page_cur_t	cur1;
 	page_cur_t	cur2;
@@ -874,7 +874,7 @@ page_delete_rec_list_end(
 	mtr_t*		mtr)	/*!< in: mtr */
 {
   page_t * const page= page_align(rec);
-  ut_ad(page == block->page.frame);
+  ut_ad(page == block->page.frame());
   ut_ad(size == ULINT_UNDEFINED || size < srv_page_size);
   ut_ad(index->table->not_redundant() == !!page_is_comp(page));
 #ifdef UNIV_ZIP_DEBUG
@@ -1102,7 +1102,7 @@ page_delete_rec_list_start(
 
 	rec_offs_init(offsets_);
 
-	ut_ad(page_align(rec) == block->page.frame);
+	ut_ad(page_align(rec) == block->page.frame());
 	ut_ad((ibool) !!page_rec_is_comp(rec)
 	      == dict_table_is_comp(index->table));
 #ifdef UNIV_ZIP_DEBUG
@@ -1412,7 +1412,7 @@ page_print_list(
 	dict_index_t*	index,	/*!< in: dictionary index of the page */
 	ulint		pr_n)	/*!< in: print n first and n last entries */
 {
-	page_t*		page		= block->page.frame;
+	page_t*		page		= block->page.frame();
 	page_cur_t	cur;
 	ulint		count;
 	ulint		n_recs;
@@ -1513,7 +1513,7 @@ page_print(
 	ulint		rn)	/*!< in: print rn first and last records
 				in directory */
 {
-	page_t*	page = block->page.frame;
+	page_t*	page = block->page.frame();
 
 	page_header_print(page);
 	page_dir_print(page, dn);

@@ -496,14 +496,13 @@ lock_prdt_insert_check_and_lock(
 	lock_prdt_t*	prdt)	/*!< in: Predicates with Minimum Bound
 				Rectangle */
 {
-  const page_t *page= page_align(rec);
-
-  ut_ad(block->page.frame == page);
+  ut_ad(block->page.frame() == page_align(rec));
   ut_ad(!index->table->is_temporary());
   ut_ad(index->is_spatial());
 
   trx_t *trx= thr_get_trx(thr);
   const page_id_t id{block->page.id()};
+  const page_t *page= block->page.frame();
   dberr_t err= DB_SUCCESS;
 
   {
@@ -762,7 +761,7 @@ lock_prdt_lock(
 					   trx)) {
 				err = lock_rec_enqueue_waiting(
 					wait_for, prdt_mode, id,
-					block->page.frame, PRDT_HEAPNO,
+					block->page.frame(), PRDT_HEAPNO,
 					index, thr, prdt);
 			} else {
 				lock_prdt_add_to_queue(

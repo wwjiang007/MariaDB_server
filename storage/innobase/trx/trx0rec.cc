@@ -84,7 +84,7 @@ trx_undo_page_set_next_prev_and_add(
 {
   page_t *const undo_page= page_align(ptr);
 
-  ut_ad(undo_page == undo_block->page.frame);
+  ut_ad(undo_page == undo_block->page.frame());
 
   if (UNIV_UNLIKELY(trx_undo_left(ptr) < 2))
     return 0;
@@ -133,7 +133,7 @@ trx_undo_log_v_idx(
 	byte*			ptr,
 	bool			first_v_col)
 {
-	ut_ad(page_align(ptr) == undo_block->page.frame);
+	ut_ad(page_align(ptr) == undo_block->page.frame());
 	ut_ad(pos < table->n_v_def);
 	dict_v_col_t*	vcol = dict_table_get_nth_v_col(table, pos);
 	byte*		old_ptr;
@@ -305,7 +305,7 @@ trx_undo_report_insert_virtual(
 	byte*	start = *ptr;
 	bool	first_v_col = true;
 
-	ut_ad(page_align(*ptr) == undo_block->page.frame);
+	ut_ad(page_align(*ptr) == undo_block->page.frame());
 
 	if (trx_undo_left(*ptr) < 2) {
 		return(false);
@@ -1671,7 +1671,7 @@ uint16_t
 trx_undo_page_report_rename(trx_t* trx, const dict_table_t* table,
 			    buf_block_t* block, mtr_t* mtr)
 {
-	page_t* page = block->page.frame;
+	page_t* page = block->page.frame();
 	byte*	ptr_first_free  = my_assume_aligned<2>(TRX_UNDO_PAGE_HDR
 						       + TRX_UNDO_PAGE_FREE
 						       + page);
@@ -1900,7 +1900,7 @@ err_exit:
 	ut_ad(undo != NULL);
 
 	do {
-		page_t* undo_page = undo_block->page.frame;
+		page_t* undo_page = undo_block->page.frame();
 		uint16_t offset = !rec
 			? trx_undo_page_report_insert(
 				undo_block, undo_page, trx, index, clust_entry,
@@ -2066,7 +2066,7 @@ trx_undo_get_undo_rec_low(
       buf_page_get(page_id_t(rseg->space->id, page_no), 0, RW_S_LATCH, &mtr))
   {
     buf_page_make_young_if_needed(&undo_page->page);
-    undo_rec= undo_page->page.frame + offset;
+    undo_rec= undo_page->page.frame() + offset;
     const size_t end= mach_read_from_2(undo_rec);
     if (UNIV_UNLIKELY(end <= offset ||
                       end >= srv_page_size - FIL_PAGE_DATA_END))

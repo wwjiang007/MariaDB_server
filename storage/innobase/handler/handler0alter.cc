@@ -6119,7 +6119,7 @@ func_exit:
 			goto func_exit;
 		}
 
-		if (fil_page_get_type(root->page.frame)
+		if (fil_page_get_type(root->page.frame())
 		    != FIL_PAGE_TYPE_INSTANT) {
 			DBUG_ASSERT("wrong page type" == 0);
 			err = DB_CORRUPTION;
@@ -6213,7 +6213,7 @@ empty_table:
 	mtr.start();
 	if (buf_block_t* root = btr_root_block_get(index, RW_S_LATCH, &mtr,
 						   &err)) {
-		if (fil_page_get_type(root->page.frame) != FIL_PAGE_INDEX) {
+		if (fil_page_get_type(root->page.frame()) != FIL_PAGE_INDEX) {
 			DBUG_ASSERT("wrong page type" == 0);
 			err = DB_CORRUPTION;
 			goto func_exit;
@@ -10826,7 +10826,7 @@ commit_cache_norebuild(
 					    RW_X_LATCH, &mtr)) {
 					byte* f = FSP_HEADER_OFFSET
 						+ FSP_SPACE_FLAGS
-						+ b->page.frame;
+						+ b->page.frame();
 					const auto sf = space->flags
 						& ~FSP_FLAGS_MEM_MASK;
 					if (mach_read_from_4(f) != sf) {

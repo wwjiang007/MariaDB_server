@@ -35,7 +35,7 @@ page_cur_get_block(
 	page_cur_t*	cur)	/*!< in: page cursor */
 {
   ut_ad(cur);
-  ut_ad(!cur->rec || page_align(cur->rec) == cur->block->page.frame);
+  ut_ad(!cur->rec || page_align(cur->rec) == cur->block->page.frame());
   return cur->block;
 }
 
@@ -58,7 +58,7 @@ UNIV_INLINE
 rec_t *page_cur_get_rec(const page_cur_t *cur)
 {
   ut_ad(cur);
-  ut_ad(!cur->rec || page_align(cur->rec) == cur->block->page.frame);
+  ut_ad(!cur->rec || page_align(cur->rec) == cur->block->page.frame());
   return cur->rec;
 }
 #endif /* UNIV_DEBUG */
@@ -74,7 +74,7 @@ page_cur_set_before_first(
 	page_cur_t*		cur)	/*!< in: cursor */
 {
 	cur->block = const_cast<buf_block_t*>(block);
-	cur->rec = page_get_infimum_rec(block->page.frame);
+	cur->rec = page_get_infimum_rec(block->page.frame());
 }
 
 /*********************************************************//**
@@ -88,7 +88,7 @@ page_cur_set_after_last(
 	page_cur_t*		cur)	/*!< in: cursor */
 {
 	cur->block = const_cast<buf_block_t*>(block);
-	cur->rec = page_get_supremum_rec(block->page.frame);
+	cur->rec = page_get_supremum_rec(block->page.frame());
 }
 
 /*********************************************************//**
@@ -101,7 +101,7 @@ page_cur_is_before_first(
 	const page_cur_t*	cur)	/*!< in: cursor */
 {
 	ut_ad(cur);
-	ut_ad(page_align(cur->rec) == cur->block->page.frame);
+	ut_ad(page_align(cur->rec) == cur->block->page.frame());
 	return(page_rec_is_infimum(cur->rec));
 }
 
@@ -115,7 +115,7 @@ page_cur_is_after_last(
 	const page_cur_t*	cur)	/*!< in: cursor */
 {
 	ut_ad(cur);
-	ut_ad(page_align(cur->rec) == cur->block->page.frame);
+	ut_ad(page_align(cur->rec) == cur->block->page.frame());
 	return(page_rec_is_supremum(cur->rec));
 }
 
@@ -131,7 +131,7 @@ page_cur_position(
 	page_cur_t*		cur)	/*!< out: page cursor */
 {
 	ut_ad(rec && block && cur);
-	ut_ad(page_align(rec) == block->page.frame);
+	ut_ad(page_align(rec) == block->page.frame());
 
 	cur->rec = (rec_t*) rec;
 	cur->block = (buf_block_t*) block;

@@ -71,6 +71,6 @@ lock_rec_create(
 {
 	return lock_rec_create_low(
 		c_lock,
-		type_mode, block->page.id(), block->page.frame, heap_no,
+		type_mode, block->page.id(), block->page.frame(), heap_no,
 		index, trx, caller_owns_trx_mutex);
 }

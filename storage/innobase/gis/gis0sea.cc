@@ -112,7 +112,7 @@ rtr_latch_leaves(
 						 MTR_MEMO_X_LOCK
 						 | MTR_MEMO_SX_LOCK));
 		/* x-latch also siblings from left to right */
-		page = block->page.frame;
+		page = block->page.frame();
 		left_page_no = btr_page_get_prev(page);
 
 		if (left_page_no != FIL_NULL) {
@@ -308,7 +308,7 @@ rtr_pcur_getnext_from_path(
 
 		buf_page_make_young_if_needed(&block->page);
 
-		page = block->page.frame;
+		page = block->page.frame();
 		page_ssn = page_get_ssn_id(page);
 
 		/* If there are splits, push the splitted page.
@@ -689,7 +689,7 @@ dberr_t rtr_search_to_nth_level(ulint level, const dtuple_t *tuple,
 
   buf_page_make_young_if_needed(&block->page);
 
-  const page_t *page= block->page.frame;
+  const page_t *page= block->page.frame();
 #ifdef UNIV_ZIP_DEBUG
   if (rw_latch != RW_NO_LATCH) {
     const page_zip_des_t *page_zip= buf_block_get_page_zip(block);
@@ -1286,7 +1286,7 @@ rtr_page_get_father_block(
 				its page x-latched */
 {
   rec_t *rec=
-    page_rec_get_next(page_get_infimum_rec(cursor->block()->page.frame));
+    page_rec_get_next(page_get_infimum_rec(cursor->block()->page.frame()));
   if (!rec)
     return nullptr;
   cursor->page_cur.rec= rec;
@@ -1780,7 +1780,7 @@ rtr_leaf_push_match_rec(
 	ulint		data_len;
 	rtr_rec_t	rtr_rec;
 
-	buf = match_rec->block.page.frame + match_rec->used;
+	buf = match_rec->block.page.frame() + match_rec->used;
 	ut_ad(page_rec_is_leaf(rec));
 
 	copy = rec_copy(buf, rec, offsets);
@@ -1893,7 +1893,7 @@ rtr_copy_buf(
 	will be copied. */
 	matches->block.page.lock.free();
 	new (&matches->block.page) buf_page_t(block->page);
-	matches->block.page.frame = block->page.frame;
+	matches->block.page.frame_ = block->page.frame_;
 	matches->block.unzip_LRU = block->unzip_LRU;
 
 	ut_d(matches->block.in_unzip_LRU_list = block->in_unzip_LRU_list);
@@ -1928,11 +1928,11 @@ rtr_init_match(
 	ut_ad(matches->matched_recs->empty());
 	matches->locked = false;
 	rtr_copy_buf(matches, block);
-	matches->block.page.frame = matches->bufp;
+	matches->block.page.frame_ = matches->bufp;
 	matches->valid = false;
 	/* We have to copy PAGE_*_SUPREMUM_END bytes so that we can
 	use infimum/supremum of this page as normal btr page for search. */
-	memcpy(matches->block.page.frame, page, page_is_comp(page)
+	memcpy(matches->block.page.frame(), page, page_is_comp(page)
 	       ? PAGE_NEW_SUPREMUM_END : PAGE_OLD_SUPREMUM_END);
 	matches->used = page_is_comp(page)
 				? PAGE_NEW_SUPREMUM_END
@@ -2068,7 +2068,7 @@ rtr_cur_search_with_match(
 
 	ut_ad(dict_index_is_spatial(index));
 
-	page = block->page.frame;
+	page = block->page.frame();
 
 	const ulint level = btr_page_get_level(page);
 	const ulint n_core = level ? 0 : index->n_fields;

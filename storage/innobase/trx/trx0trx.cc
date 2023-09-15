@@ -584,7 +584,7 @@ static dberr_t trx_resurrect_table_locks(trx_t *trx, const trx_undo_t &undo)
   {
     buf_page_make_young_if_needed(&block->page);
     buf_block_t *undo_block= block;
-    const trx_undo_rec_t *undo_rec= block->page.frame + undo.top_offset;
+    const trx_undo_rec_t *undo_rec= block->page.frame() + undo.top_offset;
 
     do
     {
@@ -989,7 +989,7 @@ void trx_t::commit_empty(mtr_t *mtr)
       buf_page_get(page_id_t(rseg->space->id, undo->hdr_page_no), 0,
                    RW_X_LATCH, mtr))
   {
-    page_t *upage= u->page.frame;
+    page_t *upage= u->page.frame();
     ut_d(const uint16_t state=
          mach_read_from_2(TRX_UNDO_SEG_HDR + TRX_UNDO_STATE + upage));
     ut_ad(state == undo->state || state == TRX_UNDO_ACTIVE);
@@ -1069,7 +1069,7 @@ void trx_t::commit_empty(mtr_t *mtr)
         if (mach_read_from_8(prev + TRX_UNDO_TRX_NO) >= id);
         else if (buf_block_t *rseg_header= rseg->get(mtr, nullptr))
         {
-          page_t *rseg_page= rseg_header->page.frame;
+          page_t *rseg_page= rseg_header->page.frame();
           byte *m= TRX_RSEG + TRX_RSEG_MAX_TRX_ID + rseg_page;
 
           do
@@ -1342,7 +1342,7 @@ ATTRIBUTE_NOINLINE static void trx_commit_cleanup(trx_undo_t *&undo)
                      RW_X_LATCH, &mtr))
     {
       fseg_header_t *file_seg= TRX_UNDO_SEG_HDR + TRX_UNDO_FSEG_HEADER +
-        block->page.frame;
+        block->page.frame();
 
       finished= fseg_free_step(file_seg, &mtr);
 
@@ -1350,7 +1350,7 @@ ATTRIBUTE_NOINLINE static void trx_commit_cleanup(trx_undo_t *&undo)
       else if (buf_block_t *rseg_header= rseg->get(&mtr, nullptr))
       {
         static_assert(FIL_NULL == 0xffffffff, "compatibility");
-        memset(rseg_header->page.frame + TRX_RSEG + TRX_RSEG_UNDO_SLOTS +
+        memset(rseg_header->page.frame() + TRX_RSEG + TRX_RSEG_UNDO_SLOTS +
                undo->id * TRX_RSEG_SLOT_SIZE, 0xff, 4);
       }
     }

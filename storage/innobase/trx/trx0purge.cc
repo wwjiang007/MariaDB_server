@@ -298,8 +298,8 @@ trx_purge_add_undo_to_history(const trx_t* trx, trx_undo_t*& undo, mtr_t* mtr)
   /* This function is invoked during transaction commit, which is not
   allowed to fail. If we get a corrupted undo header, we will crash here. */
   ut_a(undo_page);
-  page_t *const upage= undo_page->page.frame;
-  page_t *const rseg_header_page= rseg_header->page.frame;
+  page_t *const upage= undo_page->page.frame();
+  page_t *const rseg_header_page= rseg_header->page.frame();
   trx_ulogf_t *const undo_header= upage + undo->hdr_offset;
 
   ut_ad(mach_read_from_2(undo_header + TRX_UNDO_NEEDS_PURGE) <= 1);
@@ -399,7 +399,7 @@ static void trx_purge_free_segment(buf_block_t *rseg_hdr, buf_block_t *block,
   ut_ad(mtr.memo_contains_flagged(block, MTR_MEMO_PAGE_X_FIX));
 
   byte *fseg_header= TRX_UNDO_SEG_HDR + TRX_UNDO_FSEG_HEADER +
-    block->page.frame;
+    block->page.frame();
 
   while (!fseg_free_step_not_header(fseg_header, &mtr))
   {
@@ -485,7 +485,7 @@ func_exit:
     return err;
   }
 
-  page_t *const rseg_hdr_page= rseg_hdr->page.frame;
+  page_t *const rseg_hdr_page= rseg_hdr->page.frame();
   hdr_addr= flst_get_last(TRX_RSEG + TRX_RSEG_HISTORY + rseg_hdr_page);
 
   if (hdr_addr.page == FIL_NULL)
@@ -511,7 +511,7 @@ loop:
   if (!b)
     goto func_exit;
 
-  page_t *const page= b->page.frame;
+  page_t *const page= b->page.frame();
   const trx_id_t undo_trx_no=
     mach_read_from_8(page + hdr_addr.boffset + TRX_UNDO_TRX_NO);
 
@@ -867,9 +867,9 @@ not_free:
       ut_a(rblock);
       /* These were written by trx_rseg_header_create(). */
       ut_ad(!mach_read_from_4(TRX_RSEG + TRX_RSEG_FORMAT +
-                              rblock->page.frame));
+                              rblock->page.frame()));
       ut_ad(!mach_read_from_4(TRX_RSEG + TRX_RSEG_HISTORY_SIZE +
-                              rblock->page.frame));
+                              rblock->page.frame()));
       rseg.reinit(rblock->page.id().page_no());
     }
 
@@ -940,7 +940,7 @@ void purge_sys_t::rseg_get_next_history_log()
   if (buf_block_t *undo_page=
       get_page(page_id_t(rseg->space->id, rseg->last_page_no)))
   {
-    const byte *log_hdr= undo_page->page.frame + rseg->last_offset();
+    const byte *log_hdr= undo_page->page.frame() + rseg->last_offset();
     prev_log_addr= flst_get_prev_addr(log_hdr + TRX_UNDO_HISTORY_NODE);
     if (prev_log_addr.boffset < TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_NODE ||
         prev_log_addr.boffset >= srv_page_size - TRX_UNDO_LOG_OLD_HDR_SIZE)
@@ -961,7 +961,7 @@ void purge_sys_t::rseg_get_next_history_log()
     if (const buf_block_t* undo_page=
         get_page(page_id_t(rseg->space->id, prev_log_addr.page)))
     {
-      const byte *log_hdr= undo_page->page.frame + prev_log_addr.boffset;
+      const byte *log_hdr= undo_page->page.frame() + prev_log_addr.boffset;
       trx_no= mach_read_from_8(log_hdr + TRX_UNDO_TRX_NO);
       ut_ad(mach_read_from_2(log_hdr + TRX_UNDO_NEEDS_PURGE) <= 1);
     }
@@ -1009,7 +1009,7 @@ bool purge_sys_t::choose_next_log()
     buf_block_t *b= get_page(id);
     if (!b)
       goto purge_nothing;
-    const byte *const frame= b->page.frame;
+    const byte *const frame= b->page.frame();
     const byte *const hoffset= frame + hdr_offset;
     const trx_undo_rec_t *undo_rec=
       trx_undo_page_get_first_rec(b, hdr_page_no, hoffset);
@@ -1027,7 +1027,7 @@ bool purge_sys_t::choose_next_log()
       if (!b)
         goto purge_nothing;
       undo_rec=
-        trx_undo_page_get_first_rec(b, page_no, b->page.frame + hdr_offset);
+        trx_undo_page_get_first_rec(b, page_no, b->page.frame() + hdr_offset);
       if (!undo_rec)
         goto purge_nothing;
     }
@@ -1077,7 +1077,7 @@ inline trx_purge_rec_t purge_sys_t::get_next_rec(roll_ptr_t roll_ptr)
     return {nullptr, 0};
   }
 
-  const page_t *const frame= b->page.frame;
+  const page_t *const frame= b->page.frame();
 
   if (const trx_undo_rec_t *rec2=
       trx_undo_page_get_next_rec(b, frame + offset, hdr_page_no, hdr_offset))
@@ -1098,7 +1098,8 @@ inline trx_purge_rec_t purge_sys_t::get_next_rec(roll_ptr_t roll_ptr)
       if (buf_block_t *next_page= get_page(page_id))
       {
         rec2= trx_undo_page_get_first_rec(next_page, hdr_page_no,
-                                          next_page->page.frame + hdr_offset);
+                                          next_page->page.frame() +
+                                          hdr_offset);
         if (rec2)
         {
           page_no= next;

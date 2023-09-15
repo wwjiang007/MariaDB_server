@@ -303,7 +303,7 @@ page_cur_search_with_match(
 	int		cmp;
 	const dict_index_t* const index = cursor->index;
 	const buf_block_t* const block = cursor->block;
-	const page_t* const page = block->page.frame;
+	const page_t* const page = block->page.frame();
 #ifdef UNIV_ZIP_DEBUG
 	const page_zip_des_t*	page_zip = buf_block_get_page_zip(block);
 #endif /* UNIV_ZIP_DEBUG */
@@ -591,7 +591,7 @@ page_cur_search_with_match_bytes(
 			ut_ad(mode == PAGE_CUR_L || mode == PAGE_CUR_LE
 			      || mode == PAGE_CUR_G || mode == PAGE_CUR_GE);
 #endif /* UNIV_DEBUG */
-	page = block->page.frame;
+	page = block->page.frame();
 #ifdef UNIV_ZIP_DEBUG
 	ut_a(!page_zip || page_zip_validate(page_zip, page, index));
 #endif /* UNIV_ZIP_DEBUG */
@@ -814,7 +814,7 @@ Split a directory slot which owns too many records.
 static bool page_dir_split_slot(const buf_block_t &block,
                                 page_dir_slot_t *slot)
 {
-  ut_ad(slot <= &block.page.frame[srv_page_size - PAGE_EMPTY_DIR_START]);
+  ut_ad(slot <= &block.page.frame()[srv_page_size - PAGE_EMPTY_DIR_START]);
   slot= my_assume_aligned<2>(slot);
 
   const ulint n_owned= PAGE_DIR_SLOT_MAX_N_OWNED + 1;
@@ -934,7 +934,7 @@ static void page_zip_dir_balance_slot(buf_block_t *block, page_t *page,
 {
 	ut_ad(block->page.zip.data);
 	ut_ad(page_is_comp(page));
-	ut_ad(page == block->page.frame);
+	ut_ad(page == block->page.frame());
 	ut_ad(s > 0);
 
 	const ulint n_slots = page_dir_get_n_slots(page);
@@ -1003,7 +1003,7 @@ static void page_dir_balance_slot(const buf_block_t &block, page_t *page,
 				  ulint s)
 {
 	const bool comp= page_is_comp(page);
-	ut_ad(page == block.page.frame);
+	ut_ad(page == block.page.frame());
 	ut_ad(!block.page.zip.data);
 	ut_ad(s > 0);
 
@@ -1147,7 +1147,7 @@ inline void mtr_t::page_insert(const buf_block_t &block, bool reuse,
 {
   ut_ad(!block.page.zip.data);
   ut_ad(m_log_mode == MTR_LOG_ALL);
-  ut_d(const page_t *const page= block.page.frame);
+  ut_d(const page_t *const page= block.page.frame());
   ut_d(ulint n_slots= page_dir_get_n_slots(page));
   ut_ad(n_slots >= 2);
   ut_d(const byte *page_end=
@@ -1233,7 +1233,7 @@ inline void mtr_t::page_insert(const buf_block_t &block, bool reuse,
 {
   ut_ad(!block.page.zip.data);
   ut_ad(m_log_mode == MTR_LOG_ALL);
-  ut_d(const page_t *const page= block.page.frame);
+  ut_d(const page_t *const page= block.page.frame());
   ut_d(ulint n_slots= page_dir_get_n_slots(page));
   ut_ad(n_slots >= 2);
   ut_d(const byte *page_end= page_dir_get_nth_slot(page, n_slots - 1));
@@ -2147,7 +2147,7 @@ static void page_mem_free(const buf_block_t &block, rec_t *rec,
                           size_t data_size, size_t extra_size)
 {
   page_t *page= page_align(rec);
-  ut_ad(page == block.page.frame);
+  ut_ad(page == block.page.frame());
   ut_ad(!block.page.zip.data);
   const rec_t *free= page_header_get_ptr(page, PAGE_FREE);
 
@@ -2409,7 +2409,7 @@ bool page_apply_insert_redundant(const buf_block_t &block, bool reuse,
                                  size_t hdr_c, size_t data_c,
                                  const void *data, size_t data_len)
 {
-  page_t * const page= block.page.frame;
+  page_t * const page= block.page.frame();
   const uint16_t n_slots= page_dir_get_n_slots(page);
   byte *page_n_heap= my_assume_aligned<2>(PAGE_N_HEAP + PAGE_HEADER + page);
   const uint16_t h= mach_read_from_2(page_n_heap);
@@ -2651,7 +2651,7 @@ bool page_apply_insert_dynamic(const buf_block_t &block, bool reuse,
                                size_t hdr_c, size_t data_c,
                                const void *data, size_t data_len)
 {
-  page_t * const page= block.page.frame;
+  page_t * const page= block.page.frame();
   const uint16_t n_slots= page_dir_get_n_slots(page);
   byte *page_n_heap= my_assume_aligned<2>(PAGE_N_HEAP + PAGE_HEADER + page);
   ulint h= mach_read_from_2(page_n_heap);
@@ -2866,7 +2866,7 @@ page_cur_delete_rec() for a ROW_FORMAT=REDUNDANT page.
 @return whether the operation failed (inconcistency was noticed) */
 bool page_apply_delete_redundant(const buf_block_t &block, ulint prev)
 {
-  page_t * const page= block.page.frame;
+  page_t * const page= block.page.frame();
   const uint16_t n_slots= page_dir_get_n_slots(page);
   ulint n_recs= page_get_n_recs(page);
   const page_id_t id(block.page.id());
@@ -2962,7 +2962,7 @@ page_cur_delete_rec() for a ROW_FORMAT=COMPACT or DYNAMIC page.
 bool page_apply_delete_dynamic(const buf_block_t &block, ulint prev,
                                size_t hdr_size, size_t data_size)
 {
-  page_t * const page= block.page.frame;
+  page_t * const page= block.page.frame();
   const uint16_t n_slots= page_dir_get_n_slots(page);
   ulint n_recs= page_get_n_recs(page);
   const page_id_t id(block.page.id());

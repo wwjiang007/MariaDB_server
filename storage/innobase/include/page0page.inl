@@ -45,7 +45,7 @@ page_update_max_trx_id(
 	ut_ad(block);
 	ut_ad(mtr->memo_contains_flagged(block, MTR_MEMO_PAGE_X_FIX));
 	ut_ad(trx_id);
-	page_t* page = block->page.frame;
+	page_t* page = block->page.frame();
 	ut_ad(page_is_leaf(page));
 
 	if (page_get_max_trx_id(page) < trx_id) {
@@ -84,7 +84,7 @@ page_set_ssn_id(
                                    MTR_MEMO_PAGE_X_FIX));
   ut_ad(!page_zip || page_zip == &block->page.zip);
   constexpr uint16_t field= FIL_RTREE_SPLIT_SEQ_NUM;
-  byte *b= my_assume_aligned<2>(&block->page.frame[field]);
+  byte *b= my_assume_aligned<2>(&block->page.frame()[field]);
   if (mtr->write<8,mtr_t::MAYBE_NOP>(*block, b, ssn_id) &&
       UNIV_LIKELY_NULL(page_zip))
     memcpy_aligned<2>(&page_zip->data[field], b, 8);

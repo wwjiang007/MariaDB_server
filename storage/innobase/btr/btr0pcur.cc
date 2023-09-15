@@ -260,7 +260,7 @@ static bool btr_pcur_optimistic_latch_leaves(buf_block_t *block,
                          mode, nullptr, BUF_GET_POSSIBLY_FREED, mtr);
 
       if (!left_block);
-      else if (btr_page_get_next(left_block->page.frame) != id.page_no())
+      else if (btr_page_get_next(left_block->page.frame()) != id.page_no())
       {
 release_left_block:
         mtr->release_last_page();
@@ -549,7 +549,7 @@ btr_pcur_move_to_next_page(
 		return err;
 	}
 
-	const page_t* next_page = next_block->page.frame;
+	const page_t* next_page = next_block->page.frame();
 
 	if (UNIV_UNLIKELY(memcmp_aligned<4>(next_page + FIL_PAGE_PREV,
 					    page + FIL_PAGE_OFFSET, 4))) {
@@ -615,7 +615,7 @@ btr_pcur_move_backward_from_page(
 	if (page_has_prev(page)) {
 		buf_block_t* left_block
 			= mtr->at_savepoint(mtr->get_savepoint() - 1);
-		const page_t* const left = left_block->page.frame;
+		const page_t* const left = left_block->page.frame();
 		if (memcmp_aligned<4>(left + FIL_PAGE_NEXT,
 				      page + FIL_PAGE_OFFSET, 4)) {
 			/* This should be the right sibling page, or

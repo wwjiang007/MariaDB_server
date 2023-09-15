@@ -2657,7 +2657,7 @@ void fsp_flags_try_adjust(fil_space_t* space, ulint flags)
 	if (buf_block_t* b = buf_page_get(
 		    page_id_t(space->id, 0), space->zip_size(),
 		    RW_X_LATCH, &mtr)) {
-		page_t* page = b->page.frame;
+		page_t* page = b->page.frame();
 		uint32_t f = fsp_header_get_flags(page);
 		if (fil_space_t::full_crc32(f)) {
 			goto func_exit;

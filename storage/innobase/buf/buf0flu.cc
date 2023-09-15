@@ -453,14 +453,14 @@ buf_flush_init_for_writing(
 	void*			page_zip_,
 	bool			use_full_checksum)
 {
-	if (block && block->page.frame != page) {
+	if (block && block->page.frame() != page) {
 		/* If page is encrypted in full crc32 format then
 		checksum stored already as a part of fil_encrypt_buf() */
 		ut_ad(use_full_checksum);
 		return;
 	}
 
-	ut_ad(!block || block->page.frame == page);
+	ut_ad(!block || block->page.frame() == page);
 	ut_ad(page);
 
 	if (page_zip_) {
@@ -761,7 +761,7 @@ ATTRIBUTE_COLD void buf_pool_t::release_freed_page(buf_page_t *bpage)
   ut_d(const lsn_t oldest_modification= bpage->oldest_modification();)
   if (fsp_is_system_temporary(bpage->id().space()))
   {
-    ut_ad(bpage->frame);
+    ut_ad(bpage->frame());
     ut_ad(oldest_modification == 2);
     bpage->clear_oldest_modification();
   }
@@ -796,7 +796,7 @@ bool buf_page_t::flush(bool evict, fil_space_t *space)
 
   const lsn_t lsn=
     mach_read_from_8(my_assume_aligned<8>
-                     (FIL_PAGE_LSN + (write_frame ? write_frame : frame)));
+                     (FIL_PAGE_LSN + (write_frame ? write_frame : frame())));
   ut_ad(lsn
         ? lsn >= oldest_modification() || oldest_modification() == 2
         : space->purpose != FIL_TYPE_TABLESPACE);
@@ -860,7 +860,7 @@ bool buf_page_t::flush(bool evict, fil_space_t *space)
   size_t orig_size;
 #endif
   buf_tmp_buffer_t *slot= nullptr;
-  byte *page= frame;
+  byte *page= frame();
 
   if (UNIV_UNLIKELY(!page)) /* ROW_FORMAT=COMPRESSED */
   {
@@ -1106,7 +1106,7 @@ static ulint buf_flush_try_neighbors(fil_space_t *space,
     const lsn_t lsn=
       mach_read_from_8(my_assume_aligned<8>
                        (FIL_PAGE_LSN +
-                        (bpage->zip.data ? bpage->zip.data : bpage->frame)));
+                        (bpage->zip.data ? bpage->zip.data : bpage->frame())));
     ut_ad(lsn >= bpage->oldest_modification());
     if (UNIV_UNLIKELY(lsn < space->get_create_lsn()))
     {

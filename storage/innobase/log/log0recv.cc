@@ -158,7 +158,7 @@ public:
                           size_t len)
   {
     ut_ad(len > 2);
-    page_t *page= block.page.frame;
+    page_t *page= block.page.frame();
     byte *free_p= my_assume_aligned<2>
       (TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_FREE + page);
     const uint16_t free= mach_read_from_2(free_p);
@@ -193,7 +193,7 @@ public:
       size= (UNIV_ZIP_SIZE_MIN >> 1) << block.page.zip.ssize;
     else
     {
-      page= block.page.frame;
+      page= block.page.frame();
       size= srv_page_size;
     }
     if (UNIV_LIKELY(my_crc32c(my_crc32c(my_crc32c(0, page + FIL_PAGE_OFFSET,
@@ -231,7 +231,7 @@ public:
   {
     const byte * const recs= begin();
     byte *const frame= block.page.zip.data
-      ? block.page.zip.data : block.page.frame;
+      ? block.page.zip.data : block.page.frame();
     const size_t size= block.physical_size();
     apply_status applied= APPLIED_NO;
 
@@ -1134,7 +1134,7 @@ fil_space_t *recv_sys_t::recover_deferred(const recv_sys_t::map::iterator &p,
       goto fail;
     const byte *page= UNIV_LIKELY_NULL(block->page.zip.data)
       ? block->page.zip.data
-      : block->page.frame;
+      : block->page.frame();
     const uint32_t space_id= mach_read_from_4(page + FIL_PAGE_SPACE_ID);
     const uint32_t flags= fsp_header_get_flags(page);
     const uint32_t page_no= mach_read_from_4(page + FIL_PAGE_OFFSET);
@@ -1499,7 +1499,7 @@ void recv_sys_t::clear()
     buf_block_t *prev_block= UT_LIST_GET_PREV(unzip_LRU, block);
     ut_ad(block->page.state() == buf_page_t::MEMORY);
     UT_LIST_REMOVE(blocks, block);
-    MEM_MAKE_ADDRESSABLE(block->page.frame, srv_page_size);
+    MEM_MAKE_ADDRESSABLE(block->page.frame(), srv_page_size);
     buf_block_free(block);
     block= prev_block;
   }
@@ -1538,14 +1538,14 @@ inline void recv_sys_t::free(const void *data)
   auto *chunk= buf_pool.chunks;
   for (auto i= buf_pool.n_chunks; i--; chunk++)
   {
-    if (data < chunk->blocks->page.frame)
+    if (data < chunk->blocks->page.frame())
       continue;
     const size_t offs= (reinterpret_cast<const byte*>(data) -
-                        chunk->blocks->page.frame) >> srv_page_size_shift;
+                        chunk->blocks->page.frame()) >> srv_page_size_shift;
     if (offs >= chunk->size)
       continue;
     buf_block_t *block= &chunk->blocks[offs];
-    ut_ad(block->page.frame == data);
+    ut_ad(block->page.frame() == data);
     ut_ad(block->page.state() == buf_page_t::MEMORY);
     ut_ad(static_cast<uint16_t>(block->page.access_time - 1) <
           srv_page_size);
@@ -1556,7 +1556,7 @@ inline void recv_sys_t::free(const void *data)
     if (!(a >> 16))
     {
       UT_LIST_REMOVE(blocks, block);
-      MEM_MAKE_ADDRESSABLE(block->page.frame, srv_page_size);
+      MEM_MAKE_ADDRESSABLE(block->page.frame(), srv_page_size);
       buf_block_free(block);
     }
     return;
@@ -2276,11 +2276,11 @@ append:
       tail->append(l, len);
       return false;
     }
-    if (end <= &block->page.frame[used - ALIGNMENT] ||
-        &block->page.frame[used] >= end)
+    if (end <= &block->page.frame()[used - ALIGNMENT] ||
+        &block->page.frame()[used] >= end)
       break; /* Not the last allocated record in the page */
     const size_t new_used= static_cast<size_t>
-      (end - block->page.frame + len + 1);
+      (end - block->page.frame() + len + 1);
     ut_ad(new_used > used);
     if (new_used > srv_page_size)
       break;
@@ -2303,7 +2303,7 @@ append:
       ut_calc_align<uint16_t>(static_cast<uint16_t>(size), ALIGNMENT);
     static_assert(ut_is_2pow(ALIGNMENT), "ALIGNMENT must be a power of 2");
     UT_LIST_ADD_FIRST(blocks, block);
-    buf= block->page.frame;
+    buf= block->page.frame();
     MEM_MAKE_ADDRESSABLE(buf, size);
     MEM_NOACCESS(static_cast<byte*>(buf) + size, srv_page_size - size);
   }
@@ -2324,7 +2324,7 @@ append:
 
     block->page.access_time= ((block->page.access_time >> 16) + 1) << 16 |
       ut_calc_align<uint16_t>(static_cast<uint16_t>(free_offset), ALIGNMENT);
-    buf= block->page.frame + free_offset - size;
+    buf= block->page.frame() + free_offset - size;
     MEM_MAKE_ADDRESSABLE(buf, size);
   }
 
@@ -2975,7 +2975,7 @@ static buf_block_t *recv_recover_page(buf_block_t *block, mtr_t &mtr,
 
 	byte *frame = UNIV_LIKELY_NULL(block->page.zip.data)
 		? block->page.zip.data
-		: block->page.frame;
+		: block->page.frame();
 	const lsn_t page_lsn = init
 		? 0
 		: mach_read_from_8(frame + FIL_PAGE_LSN);
@@ -3217,7 +3217,7 @@ bool recv_recover_page(fil_space_t* space, buf_page_t* bpage)
   mtr.start();
   mtr.set_log_mode(MTR_LOG_NO_REDO);
 
-  ut_ad(bpage->frame);
+  ut_ad(bpage->frame());
   /* Move the ownership of the x-latch on the page to this OS thread,
   so that we can acquire a second x-latch on it. This is needed for
   the operations to the page to pass the debug checks. */
@@ -3264,7 +3264,7 @@ void IORequest::fake_read_complete(os_offset_t offset) const
   ut_ad(node);
   ut_ad(is_read());
   ut_ad(bpage);
-  ut_ad(bpage->frame);
+  ut_ad(bpage->frame());
   ut_ad(recv_recovery_is_on());
   ut_ad(offset);
 
