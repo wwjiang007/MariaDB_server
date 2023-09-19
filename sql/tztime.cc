@@ -52,6 +52,11 @@
 #include <mysql/psi/mysql_file.h>
 #include "lock.h"                               // MYSQL_LOCK_IGNORE_FLUSH,
                                                 // MYSQL_LOCK_IGNORE_TIMEOUT
+
+#ifdef _WIN32
+#include <icu.h>
+#endif
+
 /* Structure describing local time type (e.g. Moscow summer time (MSD)) */
 typedef struct ttinfo
 {
@@ -1077,47 +1082,37 @@ Time_zone_system::gmt_sec_to_TIME(MYSQL_TIME *tmp, my_time_t t) const
 void
 Time_zone_system::get_timezone_information(struct tz* curr_tz, const MYSQL_TIME *local_TIME) const
 {
-#ifndef _WIN32
   uint error;
+  time_t time_sec= TIME_to_gmt_sec(local_TIME, &error);
+#ifndef _WIN32
   struct tm tm_local_time;
-  time_t time_sec= TIME_to_gmt_sec(local_TIME,  &error);
   localtime_r(&time_sec, &tm_local_time);
   strmake_buf(curr_tz->abbrevation, tm_local_time.tm_zone);
   curr_tz->seconds_offset= tm_local_time.tm_gmtoff;
 #else
-#define mdHMS(mon,day,h,m,s) (((((mon)*100+(day))*100+(h))*100+(m))*100+(s))
-  TIME_ZONE_INFORMATION tzi;
-  bool use_dst= false;
-  GetTimeZoneInformationForYear(local_TIME->year, NULL, &tzi);
-  if (tzi.StandardDate.wMonth)
-  {
-    ulonglong std= mdHMS(tzi.StandardDate.wMonth, tzi.StandardDate.wDay,
-                         tzi.StandardDate.wHour, tzi.StandardDate.wMinute,
-                         tzi.StandardDate.wSecond);
-    ulonglong dst= mdHMS(tzi.DaylightDate.wMonth, tzi.DaylightDate.wDay,
-                         tzi.DaylightDate.wHour, tzi.DaylightDate.wMinute,
-                         tzi.DaylightDate.wSecond);
-    ulonglong cur= mdHMS(local_TIME->month, local_TIME->day, local_TIME->hour,
-                        local_TIME->minute, local_TIME->second);
-    use_dst= std < dst ? cur < std || cur >= dst : cur >= dst && cur < std;
-  }
-  if (use_dst)
-  {
-    size_t len;
-    curr_tz->seconds_offset= -60 * (tzi.Bias + tzi.DaylightBias);
-    wcstombs_s(&len, curr_tz->abbrevation, sizeof(curr_tz->abbrevation),
-               tzi.DaylightName, _TRUNCATE);
-  }
-  else
-  {
-    size_t len;
-    curr_tz->seconds_offset= -60 * (tzi.Bias + tzi.StandardBias);
-    wcstombs_s(&len, curr_tz->abbrevation, sizeof(curr_tz->abbrevation),
-               tzi.StandardName, _TRUNCATE);
-  }
+  UDate udate= 1000.0 * time_sec;
+  UErrorCode status= U_ZERO_ERROR;
+
+  UCalendar *cal= ucal_open(nullptr, -1, "en-US", UCAL_GREGORIAN, &status);
+  ucal_setMillis(cal, udate, &status);
+  int32_t zone_offset= ucal_get(cal, UCAL_ZONE_OFFSET, &status);
+  int32_t dst_offset= ucal_get(cal, UCAL_DST_OFFSET, &status);
+  ucal_close(cal);
+  curr_tz->seconds_offset= (zone_offset + dst_offset) / 1000;
+
+  UChar tz_abbreviation[64];
+  UDateFormat *fmt= udat_open(UDAT_PATTERN, UDAT_PATTERN, "en-US", nullptr, -1,
+                              u"zzz", -1, &status);
+  udat_format(fmt, udate, tz_abbreviation, array_elements(tz_abbreviation),
+              nullptr, &status);
+  udat_close(fmt);
+
+  tz_abbreviation[array_elements(tz_abbreviation) - 1]= 0;
+  u_austrncpy(curr_tz->abbrevation, tz_abbreviation,
+              array_elements(curr_tz->abbrevation));
+  curr_tz->abbrevation[array_elements(curr_tz->abbrevation) - 1]= 0;
 #endif
 }
-
 
 /*
   Get name of time zone

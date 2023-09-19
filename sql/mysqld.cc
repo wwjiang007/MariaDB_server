@@ -131,6 +131,7 @@
 #include <handle_connections_win.h>
 #include <sddl.h>
 #include <winservice.h> /* SERVICE_STOPPED, SERVICE_RUNNING etc */
+#include <objbase.h>    /* CoInitializeEx */
 #endif
 
 #include <my_service_manager.h>
@@ -3865,36 +3866,17 @@ static int init_early_variables()
 }
 
 #ifdef _WIN32
-static void get_win_tzname(char* buf, size_t size)
+#include <icu.h>
+static void get_win_tzname(char *buf, size_t size)
 {
-  static struct
-  {
-    const wchar_t* windows_name;
-    const char*  tzdb_name;
-  }
-  tz_data[] =
-  {
-#include "win_tzname_data.h"
-    {0,0}
-  };
-  DYNAMIC_TIME_ZONE_INFORMATION  tzinfo;
-  if (GetDynamicTimeZoneInformation(&tzinfo) == TIME_ZONE_ID_INVALID)
-  {
+  UChar timezone[128];
+  UErrorCode status= U_ZERO_ERROR;
+  int32_t len=
+      ucal_getDefaultTimeZone(timezone, array_elements(timezone), &status);
+  if (U_SUCCESS(status))
+    u_austrncpy(buf, timezone, (int32_t) size);
+  else
     strncpy(buf, "unknown", size);
-    return;
-  }
-
-  for (size_t i= 0; tz_data[i].windows_name; i++)
-  {
-    if (wcscmp(tzinfo.TimeZoneKeyName, tz_data[i].windows_name) == 0)
-    {
-      strncpy(buf, tz_data[i].tzdb_name, size);
-      return;
-    }
-  }
-  wcstombs(buf, tzinfo.TimeZoneKeyName, size);
-  buf[size-1]= 0;
-  return;
 }
 #endif
 
@@ -3957,6 +3939,12 @@ static int init_common_variables()
 
 #ifdef HAVE_TZNAME
 #ifdef _WIN32
+  /*
+    CoInitializeEx is needed by ICU on older Windows 10, until
+    version 1903.
+  */
+  (void)CoInitializeEx(NULL,COINITBASE_MULTITHREADED);
+
   /*
    If env.variable TZ is set, derive timezone name from it.
    Otherwise, use IANA tz name from get_win_tzname.
