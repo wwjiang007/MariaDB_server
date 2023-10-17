@@ -875,26 +875,27 @@ ATTRIBUTE_COLD static void log_overwrite_warning(lsn_t lsn)
 }
 
 /** Wait in append_prepare() for buffer to become available
-@param ex   whether log_sys.latch is exclusively locked */
-ATTRIBUTE_COLD void log_t::append_prepare_wait(bool ex) noexcept
+@param ex   whether log_sys.latch is exclusively locked
+@param lsn  flush up to this lsn
+*/
+ATTRIBUTE_COLD void log_t::append_prepare_wait(bool ex, lsn_t lsn) noexcept
 {
-  log_sys.waits++;
-  log_sys.unlock_lsn();
+  waits++;
+  unlock_lsn();
 
   if (ex)
-    log_sys.latch.wr_unlock();
+    latch.wr_unlock();
   else
-    log_sys.latch.rd_unlock();
+    latch.rd_unlock();
 
-  DEBUG_SYNC_C("log_buf_size_exceeded");
-  log_buffer_flush_to_disk(log_sys.is_pmem());
+  log_write_up_to(lsn, is_pmem());
 
   if (ex)
-    log_sys.latch.wr_lock(SRW_LOCK_CALL);
+    latch.wr_lock(SRW_LOCK_CALL);
   else
-    log_sys.latch.rd_lock(SRW_LOCK_CALL);
+    latch.rd_lock(SRW_LOCK_CALL);
 
-  log_sys.lock_lsn();
+  lock_lsn();
 }
 
 /** Reserve space in the log buffer for appending data.
@@ -924,7 +925,7 @@ std::pair<lsn_t,byte*> log_t::append_prepare(size_t size, bool ex) noexcept
                                get_flushed_lsn(std::memory_order_relaxed))
                       : size_t{buf_free}) > avail); )
   {
-    append_prepare_wait(ex);
+    append_prepare_wait(ex, get_lsn());
     ut_ad(count--);
   }
 

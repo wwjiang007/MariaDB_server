@@ -447,7 +447,7 @@ public:
 private:
   /** Wait in append_prepare() for buffer to become available
   @param ex   whether log_sys.latch is exclusively locked */
-  ATTRIBUTE_COLD static void append_prepare_wait(bool ex) noexcept;
+  ATTRIBUTE_COLD void append_prepare_wait(bool ex, lsn_t lsn) noexcept;
 public:
   /** Reserve space in the log buffer for appending data.
   @tparam pmem  log_sys.is_pmem()
