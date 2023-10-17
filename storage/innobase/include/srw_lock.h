@@ -34,7 +34,6 @@ this program; if not, write to the Free Software Foundation, Inc.,
 # define SUX_LOCK_GENERIC /* Use dummy implementation for debugging purposes */
 #endif
 
-#ifdef SUX_LOCK_GENERIC
 /** An exclusive-only variant of srw_lock */
 template<bool spinloop>
 class pthread_mutex_wrapper final
@@ -70,7 +69,6 @@ template<>
 inline void pthread_mutex_wrapper<true>::wr_lock()
 { if (!wr_lock_try()) wr_wait(); }
 # endif
-#endif
 
 /** Futex-based mutex */
 template<bool spinloop>

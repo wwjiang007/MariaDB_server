@@ -815,7 +815,7 @@ template<bool release_latch> inline lsn_t log_t::write_buf() noexcept
       ... /* TODO: Update the LSN and adjust other code. */
 #else
       /* The rest of the block will be written as garbage.
-      (We want to avoid memset() while holding mutex.)
+      (We want to avoid memset() while holding exclusive lock)
       This block will be overwritten later, once records beyond
       the current LSN are generated. */
 # ifdef HAVE_valgrind
