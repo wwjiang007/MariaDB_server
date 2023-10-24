@@ -3222,6 +3222,7 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
   sigset_t set;
   int sig;
   my_thread_init();				// Init new thread
+  my_thread_set_name("signal_hand");
   DBUG_ENTER("signal_hand");
   signal_thread_in_use= 1;
 
