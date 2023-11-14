@@ -128,6 +128,7 @@ static my_bool parsing_disabled= 0;
 static my_bool display_result_vertically= FALSE, display_result_lower= FALSE,
   display_metadata= FALSE, display_result_sorted= FALSE,
   display_session_track_info= FALSE;
+static my_bool result_is_sorted= FALSE;
 static my_bool disable_query_log= 0, disable_result_log= 0;
 static my_bool disable_connect_log= 0;
 static my_bool disable_warnings= 0, disable_column_names= 0;
@@ -8527,6 +8528,10 @@ void run_query_stmt(struct st_connection *cn, struct st_command *command,
                             &ds_res_2st_execution_copy, 1);
         dynstr_free(&ds_res_1st_execution_copy);
         dynstr_free(&ds_res_2st_execution_copy);
+
+        DBUG_ASSERT(ds->length == ds_res_2st_execution_compare.length);
+        memcpy (ds->str, ds_res_2st_execution_compare.str, ds->length);
+        result_is_sorted = TRUE;
       }
       else
       {
@@ -9311,8 +9316,15 @@ void run_query(struct st_connection *cn, struct st_command *command, int flags)
 
   if (display_result_sorted)
   {
-    /* Sort the result set and append it to result */
-    dynstr_append_sorted(save_ds, &ds_sorted, 1);
+    if(!result_is_sorted)
+    {
+      /* Sort the result set and append it to result */
+      dynstr_append_sorted(save_ds, &ds_sorted, 1);
+    }
+    else
+    {
+      dynstr_reassociate(&ds_sorted, &save_ds->str, &save_ds->length, &save_ds->max_length);
+    }
     ds= save_ds;
     dynstr_free(&ds_sorted);
   }
@@ -10379,6 +10391,7 @@ int main(int argc, char **argv)
       /* Also reset "sorted_result" and "lowercase"*/
       display_result_sorted= FALSE;
       display_result_lower= FALSE;
+      result_is_sorted= FALSE;
     }
     last_command_executed= command_executed;
 
