@@ -38,6 +38,8 @@ DROP EVENT e_x1;
 DROP EVENT e_x2;
 disconnect priv_conn;
 connection default;
+let $wait_condition= SELECT count(*)=1 from information_schema.processlist;
+--source include/wait_condition.inc
 DROP DATABASE db_x;
 DROP USER pauline@localhost;
 USE events_test;
@@ -96,6 +98,8 @@ end|
 delimiter ;|
 set global event_scheduler = on;
 let $wait_condition= SELECT count(*)>0 from mysql.event where name='e_43' and interval_value= 5;
+--source include/wait_condition.inc
+let $wait_condition= SELECT count(*)=2 from information_schema.processlist;
 --source include/wait_condition.inc
 select db, name, body, status, interval_field, interval_value from mysql.event;
 drop event e_43;
