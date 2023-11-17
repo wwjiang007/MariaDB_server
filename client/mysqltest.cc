@@ -8028,6 +8028,25 @@ void run_query_normal(struct st_connection *cn, struct st_command *command,
       if (display_session_track_info)
         append_session_track_info(ds, mysql);
 
+      if (display_result_sorted)
+      {
+        DYNAMIC_STRING ds_res_copy, ds_res_sort;
+        init_dynamic_string(&ds_res_copy, "",
+                          RESULT_STRING_INIT_MEM, RESULT_STRING_INCREMENT_MEM);
+        init_dynamic_string(&ds_res_sort, "",
+                          RESULT_STRING_INIT_MEM, RESULT_STRING_INCREMENT_MEM);
+        dynstr_append(&ds_res_copy, ds->str);
+
+        /* Sort the result set and append it to result */
+        dynstr_append_sorted(&ds_res_sort, &ds_res_copy, 1);
+
+        DBUG_ASSERT(ds->length == ds_res_sort.length);
+        memcpy (ds->str, ds_res_sort.str, ds->length);
+        result_is_sorted = TRUE;
+        dynstr_free(&ds_res_copy);
+        dynstr_free(&ds_res_sort);
+      }
+
       /*
         Add all warnings to the result. We can't do this if we are in
         the middle of processing results from multi-statement, because
@@ -8035,11 +8054,11 @@ void run_query_normal(struct st_connection *cn, struct st_command *command,
       */
       if (!disable_warnings && !mysql_more_results(mysql))
       {
-	if (append_warnings(ds_warnings, mysql) || ds_warnings->length)
-	{
-	  dynstr_append_mem(ds, "Warnings:\n", 10);
-	  dynstr_append_mem(ds, ds_warnings->str, ds_warnings->length);
-	}
+        if (append_warnings(ds_warnings, mysql) || ds_warnings->length)
+        {
+          dynstr_append_mem(ds, "Warnings:\n", 10);
+          dynstr_append_mem(ds, ds_warnings->str, ds_warnings->length);
+        }
       }
     }
 
