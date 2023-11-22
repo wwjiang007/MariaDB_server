@@ -8376,6 +8376,8 @@ void run_query_stmt(struct st_connection *cn, struct st_command *command,
   DYNAMIC_STRING ds_prepare_warnings;
   DYNAMIC_STRING ds_execute_warnings;
   DYNAMIC_STRING ds_res_1st_execution;
+  DYNAMIC_STRING ds_res_2_execution_unsorted;
+  DYNAMIC_STRING *ds_res_2_output;
   my_bool ds_res_1st_execution_init = FALSE;
   my_bool compare_2nd_execution = TRUE;
   int query_match_ps2_re;
@@ -8490,8 +8492,30 @@ void run_query_stmt(struct st_connection *cn, struct st_command *command,
   if (cursor_protocol_enabled && !disable_warnings)
     append_warnings(&ds_execute_warnings, mysql);
 
-  if(read_stmt_results(stmt, ds, command))
+
+  DBUG_ASSERT(ds->length == 0);
+
+  if (!disable_result_log &&
+      compare_2nd_execution &&
+      ps2_protocol_enabled &&
+      query_match_ps2_re &&
+      display_result_sorted)
   {
+    init_dynamic_string(&ds_res_2_execution_unsorted, "",
+                        RESULT_STRING_INIT_MEM,
+                        RESULT_STRING_INCREMENT_MEM);
+    ds_res_2_output= &ds_res_2_execution_unsorted;
+  }
+  else
+    ds_res_2_output= ds;
+
+  if(read_stmt_results(stmt, ds_res_2_output, command))
+  {
+     if (ds_res_2_output != ds)
+     {
+       dynstr_append_mem(ds, ds_res_2_output->str, ds_res_2_output->length);
+       dynstr_free(ds_res_2_output);
+     }
      goto end;
   }
 
@@ -8503,46 +8527,36 @@ void run_query_stmt(struct st_connection *cn, struct st_command *command,
     */
     if(compare_2nd_execution && ps2_protocol_enabled && query_match_ps2_re)
     {
-      DYNAMIC_STRING ds_res_1st_execution_compare;
-      DYNAMIC_STRING ds_res_2st_execution_compare;
-      init_dynamic_string(&ds_res_1st_execution_compare, "",
-                            RESULT_STRING_INIT_MEM, RESULT_STRING_INCREMENT_MEM);
-      init_dynamic_string(&ds_res_2st_execution_compare, "",
-                            RESULT_STRING_INIT_MEM, RESULT_STRING_INCREMENT_MEM);
+      DYNAMIC_STRING *ds_res_1_execution_compare;
+      DYNAMIC_STRING ds_res_1_execution_sorted;
       if (display_result_sorted)
       {
-        DYNAMIC_STRING ds_res_1st_execution_copy;
-        DYNAMIC_STRING ds_res_2st_execution_copy;
-        init_dynamic_string(&ds_res_1st_execution_copy, "",
-                          RESULT_STRING_INIT_MEM, RESULT_STRING_INCREMENT_MEM);
-        init_dynamic_string(&ds_res_2st_execution_copy, "",
-                          RESULT_STRING_INIT_MEM, RESULT_STRING_INCREMENT_MEM);
-        dynstr_append(&ds_res_1st_execution_copy, ds_res_1st_execution.str);
-        dynstr_append(&ds_res_2st_execution_copy, ds->str);
-
-        /* Sort the result set and append it to result */
-        dynstr_append_sorted(&ds_res_1st_execution_compare,
-                            &ds_res_1st_execution_copy, 1);
-        dynstr_append_sorted(&ds_res_2st_execution_compare,
-                            &ds_res_2st_execution_copy, 1);
-        dynstr_free(&ds_res_1st_execution_copy);
-        dynstr_free(&ds_res_2st_execution_copy);
+        init_dynamic_string(&ds_res_1_execution_sorted, "",
+                            RESULT_STRING_INIT_MEM,
+                            RESULT_STRING_INCREMENT_MEM);
+        dynstr_append_sorted(&ds_res_1_execution_sorted,
+                             &ds_res_1st_execution, 1);
+        dynstr_append_sorted(ds, &ds_res_2_execution_unsorted, 1);
+        ds_res_1_execution_compare= &ds_res_1_execution_sorted;
       }
       else
       {
-        dynstr_append(&ds_res_1st_execution_compare, ds_res_1st_execution.str);
-        dynstr_append(&ds_res_2st_execution_compare, ds->str);
+        ds_res_1_execution_compare= &ds_res_1st_execution;
       }
-      if(!(memcmp(ds_res_1st_execution_compare.str,
-                  ds_res_2st_execution_compare.str,
-                  ds_res_2st_execution_compare.length) == 0))
+      if(ds->length != ds_res_1_execution_compare->length ||
+         !(memcmp(ds_res_1_execution_compare->str, ds->str, ds->length) == 0))
       {
-        die("The result of the 1st execution does not match with \n \
-        the result of the 2nd execution of ps-protocol:\n 1st:\n %s\n 2nd:\n %s",
-        ds_res_1st_execution_compare.str, ds_res_2st_execution_compare.str);
+        die("The result of the 1st execution does not match with \n"
+            "the result of the 2nd execution of ps-protocol:\n 1st:\n"
+            "%s\n 2nd:\n %s",
+            ds_res_1_execution_compare->str,
+            ds->str);
       }
-      dynstr_free(&ds_res_1st_execution_compare);
-      dynstr_free(&ds_res_2st_execution_compare);
+      if (display_result_sorted)
+      {
+        dynstr_free(&ds_res_1_execution_sorted);
+        dynstr_free(&ds_res_2_execution_unsorted);
+      }
     }
 
     /*
