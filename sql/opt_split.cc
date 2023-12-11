@@ -355,6 +355,7 @@ struct SplM_field_ext_info: public SplM_field_info
        with available statistics.
     10. The select doesn't use WITH ROLLUP (This limitation can probably be
        lifted)
+    11. T is not set for pushdown
 
   @retval
     true   if the answer is positive
@@ -372,7 +373,8 @@ bool JOIN::check_for_splittable_materialized()
       (derived->prohibit_cond_pushdown) ||                            // !(4)
       (derived->is_recursive_with_table()) ||                         // !(5)
       (table_count == 0 || const_tables == top_join_tab_count) ||     // !(6)
-      rollup.state != ROLLUP::STATE_NONE)                             // (10)
+      rollup.state != ROLLUP::STATE_NONE ||                           // (10)
+      (derived->is_pushed_down()))                                    // (11)
     return false;
   if (group_list)                                                     // (7.1)
   {

@@ -351,10 +351,9 @@ bool mysql_derived_merge(THD *thd, LEX *lex, TABLE_LIST *derived)
     DBUG_RETURN(FALSE);
   }
 
-  if (derived->dt_handler)
+  if (derived->is_pushed_down())
   {
-    derived->change_refs_to_fields();
-    derived->set_materialized_derived();
+    DBUG_ASSERT(derived->is_materialized_derived());
     DBUG_RETURN(FALSE);
   }
 
@@ -508,7 +507,7 @@ bool mysql_derived_merge_for_insert(THD *thd, LEX *lex, TABLE_LIST *derived)
                       derived->merge_underlying_list != 0));
   if (derived->merged_for_insert)
     DBUG_RETURN(FALSE);
-  if (derived->init_derived(thd, FALSE))
+  if (derived->setup_derived(thd, FALSE))
     DBUG_RETURN(TRUE);
   if (derived->is_materialized_derived())
     DBUG_RETURN(mysql_derived_prepare(thd, lex, derived));
@@ -561,7 +560,7 @@ bool mysql_derived_init(THD *thd, LEX *lex, TABLE_LIST *derived)
   if (!unit || unit->prepared)
     DBUG_RETURN(FALSE);
 
-  bool res= derived->init_derived(thd, TRUE);
+  bool res= derived->setup_derived(thd, TRUE);
 
   derived->updatable= derived->updatable && derived->is_view();
 
@@ -830,15 +829,6 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
     goto exit;
 
   /*
-    Check whether we can merge this derived table into main select.
-    Depending on the result field translation will or will not
-    be created.
-  */
-  if (!derived->is_with_table_recursive_reference() &&
-      derived->init_derived(thd, FALSE))
-    goto exit;
-
-  /*
     Temp table is created so that it hounours if UNION without ALL is to be 
     processed
 
@@ -886,6 +876,16 @@ bool mysql_derived_prepare(THD *thd, LEX *lex, TABLE_LIST *derived)
       derived->dt_handler= NULL;
     }
   }
+  derived->set_pushed_down(derived->dt_handler != nullptr);
+
+  /*
+    Check whether we can merge this derived table into main select.
+    Depending on the result field translation will or will not
+    be created.
+  */
+  if (!derived->is_with_table_recursive_reference() &&
+      derived->setup_derived(thd, FALSE))
+    goto exit;
 
 exit:
   /* Hide "Unknown column" or "Unknown function" error */
@@ -980,8 +980,9 @@ bool mysql_derived_optimize(THD *thd, LEX *lex, TABLE_LIST *derived)
     DBUG_RETURN(FALSE);
   }
 
-  if (derived->is_materialized_derived() && derived->dt_handler)
+  if (derived->is_pushed_down())
   {
+    DBUG_ASSERT(derived->dt_handler);
     /* Create an object for execution of the query specifying the table */
     if (!(derived->pushdown_derived=
             new (thd->mem_root) Pushdown_derived(derived, derived->dt_handler)))

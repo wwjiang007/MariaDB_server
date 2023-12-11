@@ -1909,7 +1909,13 @@ class IS_table_read_plan;
 #define DTYPE_MERGE                  4U
 #define DTYPE_MATERIALIZE            8U
 #define DTYPE_MULTITABLE             16U
-#define DTYPE_MASK                   (DTYPE_VIEW|DTYPE_TABLE|DTYPE_MULTITABLE)
+
+/*
+  This flag means the derived table is going to be executed by en external
+  engine (in other words, "pushed down")
+*/
+#define DTYPE_PUSH_DOWN              32U
+#define DTYPE_MASK    (DTYPE_VIEW|DTYPE_TABLE|DTYPE_MULTITABLE|DTYPE_PUSH_DOWN)
 
 /*
   Phases of derived tables/views handling, see sql_derived.cc
@@ -2894,6 +2900,18 @@ struct TABLE_LIST
   {
     derived_type|= DTYPE_MULTITABLE;
   }
+  bool is_pushed_down() const
+  {
+    return (derived_type & DTYPE_PUSH_DOWN);
+  }
+  void set_pushed_down(bool is_pushed_down= true)
+  {
+    if (is_pushed_down)
+      derived_type|= DTYPE_PUSH_DOWN;
+    else
+      derived_type&= ~DTYPE_PUSH_DOWN;
+  }
+
   bool set_as_with_table(THD *thd, With_element *with_elem);
   void reset_const_table();
   bool handle_derived(LEX *lex, uint phases);
@@ -2922,7 +2940,7 @@ struct TABLE_LIST
   st_select_lex_unit *get_unit();
   st_select_lex *get_single_select();
   void wrap_into_nested_join(List<TABLE_LIST> &join_list);
-  bool init_derived(THD *thd, bool init_view);
+  bool setup_derived(THD *thd, bool init_view);
   int fetch_number_of_rows();
   bool change_refs_to_fields();
 

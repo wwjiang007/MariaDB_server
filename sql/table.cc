@@ -9176,12 +9176,12 @@ static inline bool derived_table_optimization_done(TABLE_LIST *table)
 
 /**
   @brief
-  Initialize this derived table/view
+  Prepare this derived table/view
 
   @param thd  Thread handle
 
   @details
-  This function makes initial preparations of this derived table/view for
+  This function makes preparations of this derived table/view for
   further processing:
     if it's a derived table this function marks it either as mergeable or
       materializable
@@ -9192,7 +9192,7 @@ static inline bool derived_table_optimization_done(TABLE_LIST *table)
   @return FALSE ok
 */
 
-bool TABLE_LIST::init_derived(THD *thd, bool init_view)
+bool TABLE_LIST::setup_derived(THD *thd, bool init_view)
 {
   SELECT_LEX *first_select= get_single_select();
   SELECT_LEX_UNIT *unit= get_unit();
@@ -9239,11 +9239,16 @@ bool TABLE_LIST::init_derived(THD *thd, bool init_view)
         !thd->lex->can_not_use_merged() &&
         !((thd->lex->sql_command == SQLCOM_UPDATE_MULTI ||
            thd->lex->sql_command == SQLCOM_DELETE_MULTI) && !is_view()) &&
-        !is_recursive_with_table())
+        !is_recursive_with_table() &&
+        !is_pushed_down())
       set_merged_derived();
     else
       set_materialized_derived();
   }
+
+  /* Derived table set for pushdown can only be materialized and not merged: */
+  DBUG_ASSERT(!is_pushed_down() ||
+              (is_pushed_down() && is_materialized_derived()));
   /*
     Derived tables/view are materialized prior to UPDATE, thus we can skip
     them from table uniqueness check

@@ -14258,6 +14258,7 @@ void JOIN::free_pushdown_handlers(List<TABLE_LIST>& join_list)
     }
     delete table_ref->dt_handler;
     table_ref->dt_handler= NULL;
+    table_ref->set_pushed_down(false);
   }
 }
 
