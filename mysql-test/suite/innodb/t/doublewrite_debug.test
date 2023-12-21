@@ -44,7 +44,9 @@ commit work;
 # Slow shutdown and restart to make sure ibuf merge is finished
 SET GLOBAL innodb_fast_shutdown = 0;
 let $shutdown_timeout=;
+let $restart_parameters="--debug_dbug=+d,ib_log_checkpoint_avoid_hard";
 --source include/restart_mysqld.inc
+set global innodb_flush_sync=0;
 begin;
 insert into t1 values (6, repeat('%', 400));
 
@@ -74,6 +76,7 @@ print FILE chr(0) x ($ENV{'INNODB_PAGE_SIZE'});
 close FILE;
 EOF
 
+let $restart_parameters=;
 --source include/start_mysqld.inc
 
 let SEARCH_PATTERN=InnoDB: Restoring page \[page id: space=0, page number=0\] of datafile;
@@ -90,7 +93,9 @@ select f1, f2 from t1;
 --echo # Test Begin: Test if recovery works if 1st page of
 --echo # system tablespace is corrupted and 2nd page as corrupted.
 
-set global innodb_log_checkpoint_now = 1;
+let $restart_parameters="--debug_dbug=+d,ib_log_checkpoint_avoid_hard";
+--source include/restart_mysqld.inc
+set global innodb_flush_sync=0;
 begin;
 insert into t1 values (6, repeat('%', 400));
 
@@ -119,6 +124,7 @@ print FILE chr(0) x ($ENV{'INNODB_PAGE_SIZE'}/2);
 close FILE;
 EOF
 
+let $restart_parameters=;
 --source include/start_mysqld.inc
 
 let SEARCH_PATTERN=InnoDB: Restoring page \[page id: space=0, page number=0\] of datafile;
