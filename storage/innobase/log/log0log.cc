@@ -965,6 +965,15 @@ ATTRIBUTE_COLD void log_write_checkpoint_info(lsn_t end_lsn)
 
 	log_sys.next_checkpoint_no++;
 
+
+	DBUG_EXECUTE_IF("ib_log_checkpoint_avoid_hard",
+	  if (log_sys.last_checkpoint_lsn != LOG_START_LSN)
+	  {
+            ib::info() << "Checkpoint added: old "
+	               << log_sys.last_checkpoint_lsn
+		       << " New one " << log_sys.next_checkpoint_lsn;		 ut_ad(0);
+          });
+
 	log_sys.last_checkpoint_lsn = log_sys.next_checkpoint_lsn;
 
 	DBUG_PRINT("ib_log", ("checkpoint ended at " LSN_PF

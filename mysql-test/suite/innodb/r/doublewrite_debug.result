@@ -12,7 +12,7 @@ innodb_fil_make_page_dirty_debug	0
 show variables like 'innodb_saved_page_number_debug';
 Variable_name	Value
 innodb_saved_page_number_debug	0
-create table t1 (f1 int primary key, f2 blob) engine=innodb;
+create table t1 (f1 int primary key, f2 blob) stats_persistent=0, engine=innodb;
 start transaction;
 insert into t1 values(1, repeat('#',12));
 insert into t1 values(2, repeat('+',12));
