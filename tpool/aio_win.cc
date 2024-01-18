@@ -92,6 +92,7 @@ public:
 
   static void aio_completion_thread_proc(tpool_generic_win_aio* aio)
   {
+    SetThreadDescription(GetCurrentThread(), L"aio_completion_thread_proc");
     aio->completion_thread_work();
   }
 

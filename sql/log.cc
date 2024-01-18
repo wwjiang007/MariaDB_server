@@ -10693,6 +10693,7 @@ binlog_background_thread(void *arg __attribute__((unused)))
   MYSQL_BIN_LOG::xid_count_per_binlog *queue, *next;
   THD *thd;
   my_thread_init();
+  my_thread_set_name("binlog_background");
   DBUG_ENTER("binlog_background_thread");
 
   thd= new THD(next_thread_id());

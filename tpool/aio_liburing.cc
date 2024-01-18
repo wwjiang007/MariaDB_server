@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111 - 1301 USA*/
 #include "mysqld_error.h"
 
 #include <liburing.h>
+#include <pthread.h>
 
 #include <algorithm>
 #include <vector>
@@ -139,6 +140,7 @@ public:
 private:
   static void thread_routine(aio_uring *aio)
   {
+    pthread_setname_np(pthread_self(), "io_uring_wait");
     for (;;)
     {
       io_uring_cqe *cqe;

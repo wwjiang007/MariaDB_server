@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111 - 1301 USA*/
 # include <cstdio>
 # include <libaio.h>
 # include <sys/syscall.h>
+# include <pthread.h>
 
 /**
   Invoke the io_getevents() system call, without timeout parameter.
@@ -93,6 +94,7 @@ class aio_linux final : public aio
 
   static void getevent_thread_routine(aio_linux *aio)
   {
+    pthread_setname_np(pthread_self(), "my_getevents");
     /*
       We collect events in small batches to hopefully reduce the
       number of system calls.
