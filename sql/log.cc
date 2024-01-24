@@ -10693,7 +10693,7 @@ binlog_background_thread(void *arg __attribute__((unused)))
   MYSQL_BIN_LOG::xid_count_per_binlog *queue, *next;
   THD *thd;
   my_thread_init();
-  my_thread_set_name("binlog_background");
+  my_thread_set_name("binlog_bg");
   DBUG_ENTER("binlog_background_thread");
 
   thd= new THD(next_thread_id());
@@ -10815,7 +10815,7 @@ static PSI_thread_key key_thread_binlog;
 
 static PSI_thread_info all_binlog_threads[]=
 {
-  { &key_thread_binlog, "binlog_background", PSI_FLAG_GLOBAL},
+  { &key_thread_binlog, "binlog_bg", PSI_FLAG_GLOBAL},
 };
 #endif /* HAVE_PSI_INTERFACE */
 
