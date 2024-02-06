@@ -503,6 +503,8 @@ public:
 class Sys_var_charptr: public sys_var
 {
   const size_t max_length= 2000;
+  /* Whether the session value is updated inplace. */
+  bool inplace_session_update;
 public:
   Sys_var_charptr(const char *name_arg,
           const char *comment, int flag_args, ptrdiff_t off, size_t size,
@@ -511,11 +513,13 @@ public:
           enum binlog_status_enum binlog_status_arg=VARIABLE_NOT_IN_BINLOG,
           on_check_function on_check_func=0,
           on_update_function on_update_func=0,
-          const char *substitute=0)
+          const char *substitute=0,
+          bool inplace_session_update=false)
     : sys_var(&all_sys_vars, name_arg, comment, flag_args, off, getopt.id,
               getopt.arg_type, SHOW_CHAR_PTR, (intptr)def_val,
               lock, binlog_status_arg, on_check_func, on_update_func,
-              substitute)
+              substitute),
+              inplace_session_update(inplace_session_update)
   {
     /*
      use GET_STR_ALLOC - if ALLOCATED it must be *always* allocated,
@@ -593,10 +597,21 @@ public:
   }
   bool session_update(THD *thd, set_var *var) override
   {
-    char *new_val= update_prepare(var, MYF(MY_WME | MY_THREAD_SPECIFIC));
-    my_free(session_var(thd, char*));
-    session_var(thd, char*)= new_val;
-    return (new_val == 0 && var->save_result.string_value.str != 0);
+    if (inplace_session_update)
+    {
+      char **tmp= &session_var(thd, char*);
+      strmake((char*) *tmp,
+              var->save_result.string_value.str,
+              var->save_result.string_value.length);
+      return false;
+    }
+    else
+    {
+      char *new_val= update_prepare(var, MYF(MY_WME | MY_THREAD_SPECIFIC));
+      my_free(session_var(thd, char*));
+      session_var(thd, char*)= new_val;
+      return (new_val == 0 && var->save_result.string_value.str != 0);
+    }
   }
   void global_update_finish(char *new_val)
   {
@@ -879,10 +894,11 @@ public:
           enum binlog_status_enum binlog_status_arg=VARIABLE_NOT_IN_BINLOG,
           on_check_function on_check_func=0,
           on_update_function on_update_func=0,
-          const char *substitute=0)
+          const char *substitute=0,
+          bool inplace_session_update=false)
     : Sys_var_charptr(name_arg, comment, flag_args, off, sizeof(char*),
               getopt, def_val, lock, binlog_status_arg,
-              on_check_func, on_update_func, substitute)
+              on_check_func, on_update_func, substitute, inplace_session_update)
   {
     global_var(LEX_CSTRING).length= strlen(def_val);
     SYSVAR_ASSERT(size == sizeof(LEX_CSTRING));
