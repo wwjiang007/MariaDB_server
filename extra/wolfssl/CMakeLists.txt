@@ -12,9 +12,6 @@ IF(MSVC)
   SET(WOLFSSL_X86_64_BUILD 1)
   SET(HAVE_INTEL_RDSEED 1)
   SET(HAVE_INTEL_RDRAND 1)
-ELSEIF(CMAKE_ASM_COMPILER_ID MATCHES "Clang" AND CMAKE_VERSION VERSION_LESS 3.16)
-
-  # WolfSSL 5.5.4 bug workaround below does not work, due to some CMake bug
 ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
   SET(WOLFSSL_X86_64_BUILD 1)
   IF(CMAKE_C_COMPILER_ID MATCHES GNU  AND CMAKE_C_COMPILER_VERSION VERSION_LESS 4.9)
@@ -66,19 +63,6 @@ ENDIF()
 
 ADD_CONVENIENCE_LIBRARY(wolfssl ${WOLFSSL_SOURCES})
 
-# Workaround linker crash with older Ubuntu binutils
-# e.g aborting at ../../bfd/merge.c line 873 in _bfd_merged_section_offset
-IF(CMAKE_SYSTEM_NAME MATCHES "Linux")
-  STRING(REPLACE "-g " "-g1 " CMAKE_C_FLAGS_RELWITHDEBINFO 
-   ${CMAKE_C_FLAGS_RELWITHDEBINFO})
-  STRING(REPLACE "-g " "-g1 " CMAKE_C_FLAGS_DEBUG 
-     ${CMAKE_C_FLAGS_DEBUG})
-  STRING(REPLACE "-ggdb3 " " " CMAKE_C_FLAGS_RELWITHDEBINFO 
-    ${CMAKE_C_FLAGS_RELWITHDEBINFO})
-  STRING(REPLACE "-ggdb3 " " " CMAKE_C_FLAGS_DEBUG 
-     ${CMAKE_C_FLAGS_DEBUG})
-ENDIF()
-
 SET(WOLFCRYPT_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl/wolfcrypt/src)
 SET(WOLFCRYPT_SOURCES
 ${WOLFCRYPT_SRCDIR}/aes.c
@@ -110,41 +94,8 @@ ${WOLFCRYPT_SRCDIR}/wc_encrypt.c
 ${WOLFCRYPT_SRCDIR}/hash.c
 ${WOLFCRYPT_SRCDIR}/wolfmath.c
 ${WOLFCRYPT_SRCDIR}/kdf.c
+${WOLFCRYPT_SRCDIR}/sp_int.c
 )
-
-# Use fastmath large number math library.
-IF(NOT (MSVC AND CMAKE_C_COMPILER_ID MATCHES Clang))
-  # Can't use clang-cl with WOLFSSL_FASTMATH
-  # due to https://bugs.llvm.org/show_bug.cgi?id=25305
-  SET(WOLFSSL_FASTMATH 1)
-ENDIF()
-
-IF(WOLFSSL_FASTMATH)
-  SET(USE_FAST_MATH 1)
-  SET(TFM_TIMING_RESISTANT 1)
-  # FP_MAX_BITS is set high solely to satisfy ssl_8k_key.test
-  # WolfSSL will use more stack space with it
-  SET(FP_MAX_BITS 16384)
-  SET(WOLFCRYPT_SOURCES  ${WOLFCRYPT_SOURCES} ${WOLFCRYPT_SRCDIR}/tfm.c)
-  IF((CMAKE_SIZEOF_VOID_P MATCHES 4) AND (CMAKE_SYSTEM_PROCESSOR MATCHES "86")
-     AND (NOT MSVC))
-   # Workaround https://github.com/wolfSSL/wolfssl/issues/4245
-   # On 32bit Intel, to satisfy inline assembly's wish for free registers
-   # 1. use -fomit-frame-pointer
-   # 2. With  GCC 4, additionally use -fno-PIC, which works on x86
-   #    (modern GCC has PIC optimizations, that make it unnecessary)
-   # The following assumes GCC or Clang
-   SET(TFM_COMPILE_FLAGS  "-fomit-frame-pointer")
-   IF(CMAKE_C_COMPILER_VERSION VERSION_LESS "5")
-     SET(TFM_COMPILE_FLAGS  "${TFM_COMPILE_FLAGS} -fno-PIC")
-   ENDIF()
-   SET_SOURCE_FILES_PROPERTIES(${WOLFCRYPT_SRCDIR}/tfm.c
-      PROPERTIES COMPILE_FLAGS ${TFM_COMPILE_FLAGS})
- ENDIF()
-ELSE()
-  SET(WOLFSSL_SP_MATH_ALL 1)
-  SET(WOLFCRYPT_SOURCES  ${WOLFCRYPT_SOURCES} ${WOLFCRYPT_SRCDIR}/sp_int.c)
-ENDIF()
 
 IF(WOLFSSL_X86_64_BUILD)
   LIST(APPEND WOLFCRYPT_SOURCES ${WOLFCRYPT_SRCDIR}/cpuid.c)
@@ -167,8 +118,6 @@ IF(WOLFSSL_X86_64_BUILD)
       ${WOLFCRYPT_SRCDIR}/sha512_asm.S
       ${WOLFCRYPT_SRCDIR}/sha256_asm.S)
     ADD_DEFINITIONS(-maes -msse4.2 -mpclmul)
-    # WolfSSL 5.5.4 bug - user_settings.h not included into aes_asm.S
-    SET_PROPERTY(SOURCE ${WOLFCRYPT_SRCDIR}/aes_asm.S APPEND PROPERTY COMPILE_OPTIONS "-DWOLFSSL_X86_64_BUILD")
   ENDIF()
 ENDIF()
 

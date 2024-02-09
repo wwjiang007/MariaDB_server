@@ -51,20 +51,13 @@
 #define NO_RABBIT
 #define NO_RC4
 
-/*
-  FP_MAX_BITS is set high solely to satisfy ssl_8k_key.test
-  WolfSSL will use more stack space with it, with fastmath
-*/
-#cmakedefine FP_MAX_BITS 16384
 #define RSA_MAX_SIZE 8192
 #cmakedefine WOLFSSL_AESNI
-#cmakedefine USE_FAST_MATH
-#cmakedefine TFM_TIMING_RESISTANT
 #cmakedefine HAVE_INTEL_RDSEED
 #cmakedefine HAVE_INTEL_RDRAND
 #cmakedefine USE_INTEL_SPEEDUP
 #cmakedefine USE_FAST_MATH
 #cmakedefine WOLFSSL_X86_64_BUILD
-#cmakedefine WOLFSSL_SP_MATH_ALL
+#define WOLFSSL_SP_MATH_ALL
 
 #endif  /* WOLFSSL_USER_SETTINGS_H */
