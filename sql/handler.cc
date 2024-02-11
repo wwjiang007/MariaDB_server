@@ -3511,6 +3511,17 @@ int handler::ha_open(TABLE *table_arg, const char *name, int mode,
   DBUG_ASSERT(alloc_root_inited(&table->mem_root));
 
   set_partitions_to_open(partitions_to_open);
+  internal_tmp_table= MY_TEST(test_if_locked & HA_OPEN_INTERNAL_TABLE);
+
+  if (!internal_tmp_table && (test_if_locked & HA_OPEN_TMP_TABLE) &&
+      current_thd->slave_thread)
+  {
+    /*
+      This is a temporary table used by replication that is not attached
+      to a THD. Mark it as a global temporary table.
+    */
+    test_if_locked|= HA_OPEN_GLOBAL_TMP_TABLE;
+  }
 
   if (unlikely((error=open(name,mode,test_if_locked))))
   {
@@ -3570,7 +3581,6 @@ int handler::ha_open(TABLE *table_arg, const char *name, int mode,
     /* Copy current optimizer costs. Needed in case clone() is used */
     reset_statistics();
   }
-  internal_tmp_table= MY_TEST(test_if_locked & HA_OPEN_INTERNAL_TABLE);
 
   DBUG_RETURN(error);
 }
@@ -5689,6 +5699,9 @@ handler::ha_create(const char *name, TABLE *form, HA_CREATE_INFO *info_arg)
 {
   DBUG_ASSERT(m_lock_type == F_UNLCK);
   mark_trx_read_write();
+  if ((info_arg->options & HA_LEX_CREATE_TMP_TABLE) &&
+      current_thd->slave_thread)
+    info_arg->options|= HA_LEX_CREATE_GLOBAL_TMP_TABLE;
   int error= create(name, form, info_arg);
   if (!error &&
       !(info_arg->options & (HA_LEX_CREATE_TMP_TABLE | HA_CREATE_TMP_ALTER)))
