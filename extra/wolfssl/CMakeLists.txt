@@ -1,7 +1,7 @@
 IF(MSVC)
   PROJECT(wolfssl C ASM_MASM)
 ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
-   PROJECT(wolfssl C ASM)
+  PROJECT(wolfssl C ASM)
 ELSE()
   PROJECT(wolfssl C)
 ENDIF()
@@ -111,6 +111,8 @@ if(WOLFSSL_X86_64_BUILD)
       ${WOLFCRYPT_SRCDIR}/sha512_asm.S
       ${WOLFCRYPT_SRCDIR}/sha256_asm.S)
     target_compile_options(wolfssl PRIVATE -maes -msse4.2 -mpclmul)
+    # Workaround 5.5.4 bug (user_settings.h not included into aes_asm.S)
+    set_property(SOURCE ${WOLFCRYPT_SRCDIR}/aes_asm.S APPEND PROPERTY COMPILE_OPTIONS "-DWOLFSSL_X86_64_BUILD")
   endif()
 endif()
 
