@@ -1,4 +1,4 @@
-IF(MSVC)
+IF(MSVC_INTEL)
   PROJECT(wolfssl C ASM_MASM)
 ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
   PROJECT(wolfssl C ASM)
@@ -7,7 +7,7 @@ ELSE()
 ENDIF()
 
 IF(CMAKE_SIZEOF_VOID_P MATCHES 8)
-IF(MSVC)
+IF(MSVC_INTEL)
   SET(WOLFSSL_INTELASM ON)
   SET(WOLFSSL_X86_64_BUILD 1)
   SET(HAVE_INTEL_RDSEED 1)
@@ -87,22 +87,20 @@ ${WOLFCRYPT_SRCDIR}/kdf.c
 ${WOLFCRYPT_SRCDIR}/sp_int.c
 )
 
+# Optimizations, assembly
 if(WOLFSSL_X86_64_BUILD)
   target_sources(wolfssl PRIVATE ${WOLFCRYPT_SRCDIR}/cpuid.c)
-  if(MSVC)
-    SET(WOLFSSL_AESNI 1)
+  if(MSVC_INTEL)
+    set(WOLFSSL_AESNI 1)
     target_sources(wolfssl PRIVATE
       ${WOLFCRYPT_SRCDIR}/aes_asm.asm
       ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.asm)
-     # size_t to long truncation warning
-    target_compile_options(wolfssl PRIVATE $<$<COMPILE_LANGUAGE:C>:-wd4267 -wd4334 -wd4028 -wd4244>)
     if(CMAKE_C_COMPILER_ID MATCHES Clang)
       target_compile_options(wolfssl PRIVATE  $<$<COMPILE_LANGUAGE:C>:-maes -msse4.2 -mpclmul -mrdrnd -mrdseed> )
-      target_compile_options(wolfssl PRIVATE  $<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-function-pointer-types> )
     endif()
   elseif(WOLFSSL_INTELASM)
-    SET(WOLFSSL_AESNI 1)
-    SET(USE_INTEL_SPEEDUP 1)
+    set(WOLFSSL_AESNI 1)
+    set(USE_INTEL_SPEEDUP 1)
     target_sources(wolfssl PRIVATE
       ${WOLFCRYPT_SRCDIR}/aes_asm.S
       ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.S
@@ -113,6 +111,15 @@ if(WOLFSSL_X86_64_BUILD)
     target_compile_options(wolfssl PRIVATE -maes -msse4.2 -mpclmul)
     # Workaround 5.5.4 bug (user_settings.h not included into aes_asm.S)
     set_property(SOURCE ${WOLFCRYPT_SRCDIR}/aes_asm.S APPEND PROPERTY COMPILE_OPTIONS "-DWOLFSSL_X86_64_BUILD")
+  endif()
+endif()
+
+# Silence some warnings
+if(MSVC)
+  # truncation warnings
+  target_compile_options(wolfssl PRIVATE $<$<COMPILE_LANGUAGE:C>:/wd4244>)
+  if(CMAKE_C_COMPILER_ID MATCHES Clang)
+    target_compile_options(wolfssl PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-function-pointer-types>)
   endif()
 endif()
 
