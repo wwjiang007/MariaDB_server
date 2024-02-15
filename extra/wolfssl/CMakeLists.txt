@@ -18,8 +18,7 @@ ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
     MESSAGE_ONCE(NO_INTEL_ASSEMBLY "Disable Intel assembly for WolfSSL - compiler is too old")
   ELSE()
     IF(WITH_MSAN)
-      MESSAGE_ONCE(MSAN_CANT_HANDLE_IT
-	"Disable Intel assembly for WolfSSL - MSAN can't handle it")
+      MESSAGE_ONCE(MSAN_CANT_HANDLE_IT "Disable Intel assembly for WolfSSL - MSAN can't handle it")
     ELSE()
       MY_CHECK_C_COMPILER_FLAG(-maes)
       MY_CHECK_C_COMPILER_FLAG(-msse4)
@@ -41,30 +40,21 @@ ENDIF()
 ENDIF()
 
 SET(WOLFSSL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl/src)
-ADD_DEFINITIONS(${SSL_DEFINES})
-
-SET(WOLFSSL_SOURCES  
-   ${WOLFSSL_SRCDIR}/crl.c
-   ${WOLFSSL_SRCDIR}/internal.c
-   ${WOLFSSL_SRCDIR}/keys.c
-   ${WOLFSSL_SRCDIR}/tls.c
-   ${WOLFSSL_SRCDIR}/wolfio.c
-   ${WOLFSSL_SRCDIR}/ocsp.c
-   ${WOLFSSL_SRCDIR}/ssl.c
-   ${WOLFSSL_SRCDIR}/tls13.c)
-
-ADD_DEFINITIONS(-DWOLFSSL_LIB -DBUILDING_WOLFSSL)
-
-INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl)
-IF(MSVC)
-  # size_t to long truncation warning
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -wd4267 -wd4334 -wd4028 -wd4244")
-ENDIF()
-
-ADD_CONVENIENCE_LIBRARY(wolfssl ${WOLFSSL_SOURCES})
-
 SET(WOLFCRYPT_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl/wolfcrypt/src)
-SET(WOLFCRYPT_SOURCES
+ADD_DEFINITIONS(${SSL_DEFINES})
+ADD_DEFINITIONS(-DWOLFSSL_LIB -DBUILDING_WOLFSSL)
+INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl)
+INCLUDE_DIRECTORIES(${SSL_INCLUDE_DIRS})
+
+add_library(wolfssl STATIC
+${WOLFSSL_SRCDIR}/crl.c
+${WOLFSSL_SRCDIR}/internal.c
+${WOLFSSL_SRCDIR}/keys.c
+${WOLFSSL_SRCDIR}/tls.c
+${WOLFSSL_SRCDIR}/wolfio.c
+${WOLFSSL_SRCDIR}/ocsp.c
+${WOLFSSL_SRCDIR}/ssl.c
+${WOLFSSL_SRCDIR}/tls13.c
 ${WOLFCRYPT_SRCDIR}/aes.c
 ${WOLFCRYPT_SRCDIR}/arc4.c
 ${WOLFCRYPT_SRCDIR}/asn.c
@@ -97,31 +87,32 @@ ${WOLFCRYPT_SRCDIR}/kdf.c
 ${WOLFCRYPT_SRCDIR}/sp_int.c
 )
 
-IF(WOLFSSL_X86_64_BUILD)
-  LIST(APPEND WOLFCRYPT_SOURCES ${WOLFCRYPT_SRCDIR}/cpuid.c)
-  IF(MSVC)
+if(WOLFSSL_X86_64_BUILD)
+  target_sources(wolfssl PRIVATE ${WOLFCRYPT_SRCDIR}/cpuid.c)
+  if(MSVC)
     SET(WOLFSSL_AESNI 1)
-    LIST(APPEND WOLFCRYPT_SOURCES
-         ${WOLFCRYPT_SRCDIR}/aes_asm.asm
-         ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.asm)
-    IF(CMAKE_C_COMPILER_ID MATCHES Clang)
-      SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -maes -msse4.2 -mpclmul -mrdrnd -mrdseed")
-    ENDIF()
-  ELSEIF(WOLFSSL_INTELASM)
+    target_sources(wolfssl PRIVATE
+      ${WOLFCRYPT_SRCDIR}/aes_asm.asm
+      ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.asm)
+     # size_t to long truncation warning
+    target_compile_options(wolfssl PRIVATE $<$<COMPILE_LANGUAGE:C>:-wd4267 -wd4334 -wd4028 -wd4244>)
+    if(CMAKE_C_COMPILER_ID MATCHES Clang)
+      target_compile_options(wolfssl PRIVATE  $<$<COMPILE_LANGUAGE:C>:-maes -msse4.2 -mpclmul -mrdrnd -mrdseed> )
+      target_compile_options(wolfssl PRIVATE  $<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-function-pointer-types> )
+    endif()
+  elseif(WOLFSSL_INTELASM)
     SET(WOLFSSL_AESNI 1)
     SET(USE_INTEL_SPEEDUP 1)
-    LIST(APPEND WOLFCRYPT_SOURCES
+    target_sources(wolfssl PRIVATE
       ${WOLFCRYPT_SRCDIR}/aes_asm.S
       ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.S
       ${WOLFCRYPT_SRCDIR}/chacha_asm.S
       ${WOLFCRYPT_SRCDIR}/poly1305_asm.S
       ${WOLFCRYPT_SRCDIR}/sha512_asm.S
       ${WOLFCRYPT_SRCDIR}/sha256_asm.S)
-    ADD_DEFINITIONS(-maes -msse4.2 -mpclmul)
-  ENDIF()
-ENDIF()
+    target_compile_options(wolfssl PRIVATE -maes -msse4.2 -mpclmul)
+  endif()
+endif()
 
 CONFIGURE_FILE(user_settings.h.in user_settings.h)
-INCLUDE_DIRECTORIES(${SSL_INCLUDE_DIRS})
-ADD_CONVENIENCE_LIBRARY(wolfcrypt ${WOLFCRYPT_SOURCES})
 
