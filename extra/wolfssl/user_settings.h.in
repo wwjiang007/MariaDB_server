@@ -59,5 +59,8 @@
 #cmakedefine USE_FAST_MATH
 #cmakedefine WOLFSSL_X86_64_BUILD
 #define WOLFSSL_SP_MATH_ALL
+#define WOLFSSL_HAVE_SP_RSA
+#cmakedefine WOLFSSL_SP_X86_64
+#cmakedefine WOLFSSL_SP_X86_64_ASM
 
 #endif  /* WOLFSSL_USER_SETTINGS_H */

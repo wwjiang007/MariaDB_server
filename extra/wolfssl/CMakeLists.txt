@@ -7,33 +7,29 @@ ELSE()
 ENDIF()
 
 IF(CMAKE_SIZEOF_VOID_P MATCHES 8)
-IF(MSVC_INTEL)
+IF(MSVC_INTEL AND NOT (CMAKE_C_COMPILER_ID MATCHES Clang))
   SET(WOLFSSL_INTELASM ON)
-  SET(WOLFSSL_X86_64_BUILD 1)
   SET(HAVE_INTEL_RDSEED 1)
   SET(HAVE_INTEL_RDRAND 1)
 ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
-  SET(WOLFSSL_X86_64_BUILD 1)
   IF(CMAKE_C_COMPILER_ID MATCHES GNU  AND CMAKE_C_COMPILER_VERSION VERSION_LESS 4.9)
     MESSAGE_ONCE(NO_INTEL_ASSEMBLY "Disable Intel assembly for WolfSSL - compiler is too old")
+  ELSEIF(WITH_MSAN)
+    MESSAGE_ONCE(MSAN_CANT_HANDLE_IT "Disable Intel assembly for WolfSSL - MSAN can't handle it")
   ELSE()
-    IF(WITH_MSAN)
-      MESSAGE_ONCE(MSAN_CANT_HANDLE_IT "Disable Intel assembly for WolfSSL - MSAN can't handle it")
-    ELSE()
-      MY_CHECK_C_COMPILER_FLAG(-maes)
-      MY_CHECK_C_COMPILER_FLAG(-msse4)
-      MY_CHECK_C_COMPILER_FLAG(-mpclmul)
-      IF(have_C__maes AND have_C__msse4 AND have_C__mpclmul)
-        SET(WOLFSSL_INTELASM ON)
+    MY_CHECK_C_COMPILER_FLAG(-maes)
+    MY_CHECK_C_COMPILER_FLAG(-msse4)
+    MY_CHECK_C_COMPILER_FLAG(-mpclmul)
+    IF(have_C__maes AND have_C__msse4 AND have_C__mpclmul)
+      SET(WOLFSSL_INTELASM ON)
+      MY_CHECK_C_COMPILER_FLAG(-mrdrnd)
+      MY_CHECK_C_COMPILER_FLAG(-mrdseed)
+      IF(have_C__mrdrnd)
+        SET(HAVE_INTEL_RDRAND ON)
       ENDIF()
-    ENDIF()
-    MY_CHECK_C_COMPILER_FLAG(-mrdrnd)
-    MY_CHECK_C_COMPILER_FLAG(-mrdseed)
-    IF(have_C__mrdrnd)
-      SET(HAVE_INTEL_RDRAND ON)
-    ENDIF()
-    IF(have_C__mrdseed)
-      SET(HAVE_INTEL_RDSEED ON)
+      IF(have_C__mrdseed)
+        SET(HAVE_INTEL_RDSEED ON)
+      ENDIF()
     ENDIF()
   ENDIF()
 ENDIF()
@@ -88,18 +84,27 @@ ${WOLFCRYPT_SRCDIR}/sp_int.c
 )
 
 # Optimizations, assembly
-if(WOLFSSL_X86_64_BUILD)
-  target_sources(wolfssl PRIVATE ${WOLFCRYPT_SRCDIR}/cpuid.c)
+if(WOLFSSL_INTELASM)
+  set(WOLFSSL_X86_64_BUILD 1)
+  set(WOLFSSL_SP_X86_64 1)
+  set(WOLFSSL_SP_X86_64_ASM 1)
+  set(WOLFSSL_AESNI 1)
+  target_sources(wolfssl PRIVATE
+    ${WOLFCRYPT_SRCDIR}/cpuid.c
+    ${WOLFCRYPT_SRCDIR}/sp_x86_64.c
+  )
   if(MSVC_INTEL)
-    set(WOLFSSL_AESNI 1)
     target_sources(wolfssl PRIVATE
       ${WOLFCRYPT_SRCDIR}/aes_asm.asm
-      ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.asm)
+      ${WOLFCRYPT_SRCDIR}/aes_gcm_asm.asm
+      ${WOLFCRYPT_SRCDIR}/sp_x86_64_asm.asm
+    )
     if(CMAKE_C_COMPILER_ID MATCHES Clang)
-      target_compile_options(wolfssl PRIVATE  $<$<COMPILE_LANGUAGE:C>:-maes -msse4.2 -mpclmul -mrdrnd -mrdseed> )
+      target_compile_options(wolfssl PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:-maes -msse4.2 -mpclmul -mrdrnd -mrdseed
+        -fms-compatibility-version=19.19>)
     endif()
-  elseif(WOLFSSL_INTELASM)
-    set(WOLFSSL_AESNI 1)
+  else()
     set(USE_INTEL_SPEEDUP 1)
     target_sources(wolfssl PRIVATE
       ${WOLFCRYPT_SRCDIR}/aes_asm.S
@@ -107,11 +112,21 @@ if(WOLFSSL_X86_64_BUILD)
       ${WOLFCRYPT_SRCDIR}/chacha_asm.S
       ${WOLFCRYPT_SRCDIR}/poly1305_asm.S
       ${WOLFCRYPT_SRCDIR}/sha512_asm.S
-      ${WOLFCRYPT_SRCDIR}/sha256_asm.S)
+      ${WOLFCRYPT_SRCDIR}/sha256_asm.S
+      ${WOLFCRYPT_SRCDIR}/sp_x86_64_asm.S
+    )
     target_compile_options(wolfssl PRIVATE -maes -msse4.2 -mpclmul)
     # Workaround 5.5.4 bug (user_settings.h not included into aes_asm.S)
     set_property(SOURCE ${WOLFCRYPT_SRCDIR}/aes_asm.S APPEND PROPERTY COMPILE_OPTIONS "-DWOLFSSL_X86_64_BUILD")
   endif()
+endif()
+
+if (NOT WOLFSSL_SP_X86_64)
+  # Speedup RSA operations, portably (no assembly)
+  target_sources(wolfssl PRIVATE
+    ${WOLFCRYPT_SRCDIR}/sp_c32.c
+    ${WOLFCRYPT_SRCDIR}/sp_c64.c
+  )
 endif()
 
 # Silence some warnings
