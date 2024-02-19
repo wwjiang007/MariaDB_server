@@ -119,4 +119,21 @@ extern mysql_mutex_t LOCK_global_table_stats;
 extern mysql_mutex_t LOCK_global_index_stats;
 extern mysql_mutex_t LOCK_stats;
 
+struct User_info_element;
+class User_info_table {
+  LF_HASH m_users;
+  static uchar *elem_key(const uchar *record, size_t *length, my_bool);
+  static my_bool fill_row(User_info_element *elem, TABLE *table);
+  static my_bool fill_list(User_info_element *elem, List<const char> *lst);
+public:
+  void init();
+  void deinit();
+  bool report_password_error(THD *thd);
+  static int fill_schema_table(THD *thd, TABLE_LIST *tables, COND *cond);
+  static int reset();
+  PSI_memory_key key_memory;
+};
+
+extern User_info_table global_user_info_table;
+
 #endif /* SQL_CONNECT_INCLUDED */

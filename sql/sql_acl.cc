@@ -14443,6 +14443,9 @@ static int do_auth_once(THD *thd, const LEX_CSTRING *auth_plugin_name,
 
     if (unlock_plugin)
       plugin_unlock(thd, plugin);
+    if (unlikely(res == CR_AUTH_USER_CREDENTIALS) 
+        && !mpvio->make_it_fail) // flag is true when user is not found
+      global_user_info_table.report_password_error(thd);
   }
   else
   {

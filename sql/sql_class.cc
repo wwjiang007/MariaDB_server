@@ -677,6 +677,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
    m_stmt_da(&main_da),
    tdc_hash_pins(0),
    xid_hash_pins(0),
+   user_info_hash_pins(0),
    m_tmp_tables_locked(false),
    async_state()
 #ifdef HAVE_REPLICATION
@@ -1730,6 +1731,8 @@ THD::~THD()
     lf_hash_put_pins(tdc_hash_pins);
   if (xid_hash_pins)
     lf_hash_put_pins(xid_hash_pins);
+  if (user_info_hash_pins)
+    lf_hash_put_pins(user_info_hash_pins);
 #if defined(ENABLED_DEBUG_SYNC)
   debug_sync_end_thread(this);
 #endif

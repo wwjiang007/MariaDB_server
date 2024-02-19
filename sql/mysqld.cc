@@ -2003,6 +2003,7 @@ static void clean_up(bool print_message)
     tc_log->close();
   xid_cache_free();
   tdc_deinit();
+  global_user_info_table.deinit();
   mdl_destroy();
   dflt_key_cache= 0;
   key_caches.delete_elements(free_key_cache);
@@ -4847,6 +4848,8 @@ static int init_server_components()
 
   my_uuid_init((ulong) (my_rnd(&sql_rand))*12345,12345);
   wt_init();
+
+  global_user_info_table.init();
 
   /* Setup logs */
 
@@ -9704,7 +9707,8 @@ static PSI_memory_info all_server_memory[]=
 //  { &key_memory_get_all_tables, "get_all_tables", 0},
 //  { &key_memory_fill_schema_schemata, "fill_schema_schemata", 0},
   { &key_memory_native_functions, "native_functions", PSI_FLAG_GLOBAL},
-  { &key_memory_WSREP, "wsrep", 0 }
+  { &key_memory_WSREP, "wsrep", 0 },
+  { &global_user_info_table.key_memory, "User_info_table", PSI_FLAG_GLOBAL },
 };
 
 /**
