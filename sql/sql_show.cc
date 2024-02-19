@@ -71,8 +71,6 @@
 #include "lex_symbol.h"
 #define KEYWORD_SIZE 64
 
-#include "my_atomic_wrapper.h"
-
 extern SYMBOL symbols[];
 extern size_t symbols_length;
 
@@ -9558,142 +9556,6 @@ int fill_optimizer_costs_tables(THD *thd, TABLE_LIST *tables, COND *cond)
   DBUG_RETURN(res);
 }
 
-namespace Show
-{
-  ST_FIELD_INFO users_fields_info[] =
-  {
-    Column("USER",Varchar(USERNAME_CHAR_LENGTH), NOT_NULL, "User"),
-    Column("WRONG_PASSWORD_ATTEMPTS", SLonglong(), NOT_NULL, "Rows_read"),
-    CEnd()
-  };
-};
-
-User_info_table global_user_info_table;
-
-static LF_PINS *get_user_info_pins(THD *thd, LF_HASH *user_info_hash)
-{
-  if (unlikely(!thd->user_info_hash_pins))
-    thd->user_info_hash_pins= lf_hash_get_pins(user_info_hash);
-  return thd->user_info_hash_pins;
-}
-
-struct User_info_element
-{
-  std::atomic<const char*> user_name;
-  std::atomic<size_t> user_name_length;
-  std::atomic<ulong> password_errors;
-  User_info_element(const char *name, size_t length)
-    : user_name(name), user_name_length(length), password_errors(1) {}
-
-  static void initializer(LF_HASH *hash, User_info_element *dst,
-                                    const User_info_element *src)
-  {
-    char *name= (char*)my_malloc(global_user_info_table.key_memory,
-                                 src->user_name_length + 1, MYF(0));
-    memcpy(name, src->user_name, src->user_name_length + 1);
-    new (dst) User_info_element (name, src->user_name_length);
-  }
-
-  static void destructor(uchar *ptr)
-  {
-    auto *el= (User_info_element *) (ptr + LF_HASH_OVERHEAD);
-    my_free((void *)el->user_name.load(std::memory_order_acquire));
-  }
-};
-
-uchar *User_info_table::elem_key(const uchar *record, size_t *length, my_bool)
-{
-  const User_info_element *elem= (User_info_element*)record;
-  *length= elem->user_name_length.load(std::memory_order_acquire);
-  return (uchar*)elem->user_name.load(std::memory_order_acquire);
-}
-
-
-void User_info_table::init()
-{
-  lf_hash_init(&m_users, sizeof(User_info_element), LF_HASH_UNIQUE, 0, 0,
-               elem_key, &my_charset_bin);
-  m_users.initializer= (lf_hash_initializer)User_info_element::initializer;
-  m_users.alloc.destructor= User_info_element::destructor;
-}
-
-void User_info_table::deinit()
-{
-  lf_hash_destroy(&m_users);
-}
-
-bool User_info_table::report_password_error(THD *thd)
-{
-  DBUG_ASSERT(thd->main_security_ctx.user);
-  const char *user_string= thd->main_security_ctx.user;
-  size_t user_string_length= strlen(user_string);
-
-  LF_PINS *pins= get_user_info_pins(thd, &m_users); 
-  if (unlikely(!pins))
-    return false;
-
-  User_info_element *elem;
-  while (!(elem= (User_info_element*) 
-                 lf_hash_search(&m_users, thd->user_info_hash_pins, user_string,
-                                (uint)user_string_length)))
-  {
-    User_info_element user{ user_string, user_string_length };
-    int res= lf_hash_insert(&m_users, pins, &user);
-    if (res == 0)
-      return true;
-    if (res == -1)
-      return false;
-  }
-
-  elem->password_errors.fetch_add(1, std::memory_order_acq_rel);
-  lf_hash_search_unpin(pins);
-  return true;
-}
-
-my_bool User_info_table::fill_row(User_info_element *elem, TABLE *table)
-{
-  const char *name= elem->user_name.load(std::memory_order_acquire);
-  size_t length= elem->user_name_length.load(std::memory_order_acquire);
-  ulong password_errors= elem->password_errors.load(std::memory_order_acquire);
-  table->field[0]->store(name, length, system_charset_info);
-  table->field[1]->store(password_errors, true);
-  return schema_table_store_record(table->in_use, table);
-}
-
-int User_info_table::fill_schema_table(THD *thd, TABLE_LIST *tables, COND *cond)
-{
-  LF_HASH *users= &global_user_info_table.m_users;
-  LF_PINS *pins= get_user_info_pins(thd, users);
-  if (unlikely(!pins))
-    return false;
-
-  TABLE *table= tables->table;
-  return lf_hash_iterate(users, pins, (my_hash_walk_action)fill_row, table);
-}
-
-my_bool User_info_table::fill_list(User_info_element *elem, 
-                                   List<const char> *lst)
-{
-  const char *name= elem->user_name.load(std::memory_order_relaxed);
-  return lst->push_back(name);
-}
-
-int User_info_table::reset()
-{
-  THD *thd= current_thd;
-  List<const char> lst;
-  LF_HASH *users= &global_user_info_table.m_users;
-  LF_PINS *pins= get_user_info_pins(thd, users);
-
-  lf_hash_iterate(users, pins, (my_hash_walk_action)fill_list, &lst);
-  List_iterator<const char> it(lst);
-  while(const char *name= it++)
-  {
-    lf_hash_delete(users, pins, name, (uint)strlen(name));
-  }
-  return 0;
-}
-
 
 namespace Show {
 
@@ -10563,9 +10425,6 @@ ST_SCHEMA_TABLE schema_tables[]=
   {"TRIGGERS", Show::triggers_fields_info, 0,
    get_all_tables, make_old_format, get_schema_triggers_record, 5, 6, 0,
    OPEN_TRIGGER_ONLY|OPTIMIZE_I_S_TABLE},
-  {"USERS", Show::users_fields_info, User_info_table::reset,
-   User_info_table::fill_schema_table, 
-   0, 0, -1, -1, 0, 0},
   {"USER_PRIVILEGES", Show::user_privileges_fields_info, 0,
    fill_schema_user_privileges, 0, 0, -1, -1, 0, 0},
   {"VIEWS", Show::view_fields_info, 0,

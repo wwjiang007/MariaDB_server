@@ -5406,7 +5406,6 @@ public:
   LF_PINS *tdc_hash_pins;
   LF_PINS *xid_hash_pins;
   bool fix_xid_hash_pins();
-  LF_PINS *user_info_hash_pins;
 
   const XID *get_xid() const
   {
