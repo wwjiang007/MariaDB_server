@@ -1432,6 +1432,14 @@ public:
   {
     return is_block_field(reinterpret_cast<const void*>(block), n_chunks);
   }
+  /** Determine if a buffer block was created by chunk_t::create()
+  and possibly subject to withdrawal during resize().
+  @param block  block descriptor (not dereferenced)
+  @return whether block has been created by chunk_t::create() */
+  bool is_uncompressed_ext(const buf_page_t *bpage) const
+  {
+    return is_block_field(reinterpret_cast<const void*>(bpage), n_chunks);
+  }
 
 public:
   /** @return whether the buffer pool contains a page

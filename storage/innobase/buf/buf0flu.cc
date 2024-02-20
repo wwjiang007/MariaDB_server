@@ -761,7 +761,7 @@ ATTRIBUTE_COLD void buf_pool_t::release_freed_page(buf_page_t *bpage)
   ut_d(const lsn_t oldest_modification= bpage->oldest_modification();)
   if (fsp_is_system_temporary(bpage->id().space()))
   {
-    ut_ad(bpage->frame());
+    ut_ad(buf_pool.is_uncompressed_ext(bpage));
     ut_ad(oldest_modification == 2);
     bpage->clear_oldest_modification();
   }

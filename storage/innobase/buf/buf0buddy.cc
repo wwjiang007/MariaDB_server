@@ -385,7 +385,7 @@ buf_buddy_block_register(
 	const ulint	fold = BUF_POOL_ZIP_FOLD(block);
 	ut_ad(block->page.state() == buf_page_t::MEMORY);
 
-	ut_a(block->page.frame());
+	ut_a(buf_pool.is_uncompressed_ext(block));
 	ut_a(!ut_align_offset(block->page.frame(), srv_page_size));
 
 	ut_ad(!block->page.in_zip_hash);
