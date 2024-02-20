@@ -934,7 +934,9 @@ static void page_zip_dir_balance_slot(buf_block_t *block, page_t *page,
 {
 	ut_ad(block->page.zip.data);
 	ut_ad(page_is_comp(page));
-	ut_ad(page == block->page.frame());
+	ut_ad(page == (buf_pool.is_uncompressed_ext(block)
+                       ? block->page.frame() : block->page.iframe()));
+	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
 	ut_ad(s > 0);
 
 	const ulint n_slots = page_dir_get_n_slots(page);
@@ -999,12 +1001,9 @@ this may result in merging the two slots.
 @param[in,out]	block		index page
 @param[in,out]	page		index page frame
 @param[in]	s		the slot to be balanced */
-static void page_dir_balance_slot(const buf_block_t &block, page_t *page,
-				  ulint s)
+static void page_dir_balance_slot(page_t *page, ulint s)
 {
 	const bool comp= page_is_comp(page);
-	ut_ad(page == block.page.frame());
-	ut_ad(!block.page.zip.data);
 	ut_ad(s > 0);
 
 	const ulint n_slots = page_dir_get_n_slots(page);
@@ -2147,7 +2146,6 @@ static void page_mem_free(const buf_block_t &block, rec_t *rec,
                           size_t data_size, size_t extra_size)
 {
   page_t *page= page_align(rec);
-  ut_ad(page == block.page.frame());
   ut_ad(!block.page.zip.data);
   const rec_t *free= page_header_get_ptr(page, PAGE_FREE);
 
@@ -2262,7 +2260,7 @@ page_cur_delete_rec(
 		btr_cur_pessimistic_update() to delete the only
 		record in the page and to insert another one. */
 		ut_ad(page_rec_is_supremum(page_rec_get_next(cursor->rec)));
-		page_cur_set_after_last(block, cursor);
+		cursor->rec = page_get_supremum_rec(page);
 		page_create_empty(page_cur_get_block(cursor),
 				  page_cur_get_page(cursor),
 				  const_cast<dict_index_t*>(index), mtr);
@@ -2378,6 +2376,10 @@ page_cur_delete_rec(
 			| (cur_n_owned - 1) << REC_N_OWNED_SHIFT);
 	}
 
+	ut_ad(page_align(current_rec)
+	      == (buf_pool.is_uncompressed_ext(block)
+		  ? block->page.frame() : block->page.iframe()));
+	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
 	page_mem_free(*block, current_rec, data_size, extra_size);
 
 	/* Now we have decremented the number of owned records of the slot.
@@ -2385,7 +2387,7 @@ page_cur_delete_rec(
 	slots. */
 
 	if (cur_n_owned <= PAGE_DIR_SLOT_MIN_N_OWNED) {
-		page_dir_balance_slot(*block, page, cur_slot_no);
+		page_dir_balance_slot(page, cur_slot_no);
 	}
 
 	ut_ad(page_is_comp(page)
@@ -2946,7 +2948,7 @@ corrupted:
   page_mem_free(block, rec, data_size, extra_size);
 
   if (slot_owned < PAGE_DIR_SLOT_MIN_N_OWNED)
-    page_dir_balance_slot(block, page, (first_slot - slot) / 2);
+    page_dir_balance_slot(page, (first_slot - slot) / 2);
 
   ut_ad(page_simple_validate_old(page));
   return false;
@@ -3045,7 +3047,7 @@ corrupted:
   page_mem_free(block, rec, data_size, extra_size);
 
   if (slot_owned < PAGE_DIR_SLOT_MIN_N_OWNED)
-    page_dir_balance_slot(block, page, (first_slot - slot) / 2);
+    page_dir_balance_slot(page, (first_slot - slot) / 2);
 
   ut_ad(page_simple_validate_new(page));
   return false;

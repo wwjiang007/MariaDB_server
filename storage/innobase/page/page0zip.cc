@@ -3911,8 +3911,7 @@ void
 page_zip_write_blob_ptr(
 /*====================*/
 	buf_block_t*	block,	/*!< in/out: ROW_FORMAT=COMPRESSED page */
-	const byte*	rec,	/*!< in/out: record whose data is being
-				written */
+	const byte*	rec,	/*!< in: record whose data is being written */
 	dict_index_t*	index,	/*!< in: index of the page */
 	const rec_offs*	offsets,/*!< in: rec_get_offsets(rec, index) */
 	ulint		n,	/*!< in: column index */
@@ -3920,14 +3919,14 @@ page_zip_write_blob_ptr(
 {
 	const byte*	field;
 	byte*		externs;
-	const page_t* const page = block->page.frame();
+	const page_t* const page = page_align(rec);
 	page_zip_des_t* const page_zip = &block->page.zip;
 	ulint		blob_no;
 	ulint		len;
 
-	ut_ad(page_align(rec) == page);
-	ut_ad(index != NULL);
-	ut_ad(offsets != NULL);
+	ut_ad(page == (buf_pool.is_uncompressed_ext(block)
+		       ? block->page.frame() : block->page.iframe()));
+	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
 	ut_ad(page_simple_validate_new((page_t*) page));
 	ut_ad(page_zip_simple_validate(page_zip));
 	ut_ad(page_zip_get_size(page_zip)
@@ -4031,7 +4030,9 @@ page_zip_write_trx_id_and_roll_ptr(
 {
 	page_zip_des_t* const page_zip = &block->page.zip;
 
-	ut_d(const page_t* const page = block->page.frame());
+	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
+	ut_d(const page_t* const page = buf_pool.is_uncompressed_ext(block)
+	     ? block->page.frame() : block->page.iframe());
 	ut_ad(page_align(rec) == page);
 	ut_ad(page_simple_validate_new(page));
 	ut_ad(page_zip_simple_validate(page_zip));
@@ -4127,7 +4128,6 @@ page_zip_clear_rec(
 	byte*	field;
 	ulint	len;
 
-	ut_ad(page_align(rec) == block->page.frame());
 	page_zip_des_t* const page_zip = &block->page.zip;
 
 	/* page_zip_validate() would fail here if a record
@@ -4135,7 +4135,7 @@ page_zip_clear_rec(
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(!page_zip_dir_find(page_zip, page_offset(rec)));
 	ut_ad(page_zip_dir_find_free(page_zip, page_offset(rec)));
-	ut_ad(page_zip_header_cmp(page_zip, block->page.frame()));
+	ut_ad(page_zip_header_cmp(page_zip, page_align(rec)));
 
 	heap_no = rec_get_heap_no_new(rec);
 	ut_ad(heap_no >= PAGE_HEAP_NO_USER_LOW);
@@ -4235,7 +4235,9 @@ page_zip_rec_set_owned(
 	ulint		flag,	/*!< in: the owned flag (nonzero=TRUE) */
 	mtr_t*		mtr)	/*!< in/out: mini-transaction */
 {
-  ut_ad(page_align(rec) == block->page.frame());
+  ut_ad(page_align(rec) == (buf_pool.is_uncompressed_ext(block)
+                            ? block->page.frame() : block->page.iframe()));
+  ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
   page_zip_des_t *const page_zip= &block->page.zip;
   byte *slot= page_zip_dir_find(page_zip, page_offset(rec));
   MEM_CHECK_DEFINED(page_zip->data, page_zip_get_size(page_zip));
@@ -4355,7 +4357,9 @@ void page_zip_dir_delete(buf_block_t *block, byte *rec,
   page_t *const page= page_align(rec);
   page_zip_des_t *const page_zip= &block->page.zip;
 
-  ut_ad(page == block->page.frame());
+  ut_ad(page == (buf_pool.is_uncompressed_ext(block)
+                 ? block->page.frame() : block->page.iframe()));
+  ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
   ut_ad(rec_offs_validate(rec, index, offsets));
   ut_ad(rec_offs_comp(offsets));
 

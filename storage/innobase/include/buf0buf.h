@@ -391,6 +391,7 @@ ibool
 buf_zip_decompress(
 /*===============*/
 	buf_block_t*	block,	/*!< in/out: block */
+	page_t*		page,	/*!< out: page frame */
 	ibool		check);	/*!< in: TRUE=verify the page checksum */
 
 #ifdef UNIV_DEBUG
@@ -510,17 +511,27 @@ public: // FIXME: fix fil_iterate()
   /** buf_pool.page_hash link; protected by buf_pool.page_hash.lock_get() */
   buf_page_t *hash;
 private:
-  /** log sequence number of the START of the log entry written of the
-  oldest modification to this block which has not yet been written
-  to the data file;
+  union
+  {
+    /** log sequence number of the START of the log entry written of the
+    oldest modification to this block which has not yet been written
+    to the data file;
 
-  0 if no modifications are pending;
-  1 if no modifications are pending, but the block is in buf_pool.flush_list;
-  2 if modifications are pending, but the block is not in buf_pool.flush_list
-  (because id().space() is the temporary tablespace). */
-  Atomic_relaxed<lsn_t> oldest_modification_;
+    0 if no modifications are pending;
+    1 if no modifications are pending, but the block is in buf_pool.flush_list;
+    2 if modifications are pending, but the block is not in buf_pool.flush_list
+    (because id().space() is the temporary tablespace). */
+    Atomic_relaxed<lsn_t> oldest_modification_;
 
+    /** page frame during IMPORT TABLESPACE */
+    byte *import_frame;
+  };
 public:
+  /** @return page frame; only valid during IMPORT TABLESPACE */
+  byte *&iframe() { return import_frame; }
+  /** @return page frame; only valid during IMPORT TABLESPACE */
+  byte *iframe() const { return import_frame; }
+
   /** state() of unused block (in buf_pool.free list) */
   static constexpr uint32_t NOT_USED= 0;
   /** state() of block allocated as general-purpose memory */
@@ -1254,12 +1265,13 @@ private:
 
   /** Determine if a pointer belongs to a buf_block_t. It can be a pointer to
   the buf_block_t itself or a member of it.
-  @param ptr    a pointer that will not be dereferenced
+  @param ptr      a pointer that will not be dereferenced
+  @param n_chunks number of buffer pool chunks to consider
   @return whether the ptr belongs to a buf_block_t struct */
-  bool is_block_field(const void *ptr) const
+  bool is_block_field(const void *ptr, size_t n_chunks) const
   {
     const chunk_t *chunk= chunks;
-    const chunk_t *const echunk= chunk + ut_min(n_chunks, n_chunks_new);
+    const chunk_t *const echunk= chunk + n_chunks;
 
     /* TODO: protect chunks with a mutex (the older pointer will
     currently remain during resize()) */
@@ -1402,12 +1414,23 @@ public:
     return empty_lsn;
   }
 
-  /** Determine if a buffer block was created by chunk_t::create().
+  /** Determine if a buffer block was created by chunk_t::create(),
+  disregarding blocks that are subject to withdrawal in resize().
   @param block  block descriptor (not dereferenced)
   @return whether block has been created by chunk_t::create() */
   bool is_uncompressed(const buf_block_t *block) const
   {
-    return is_block_field(reinterpret_cast<const void*>(block));
+    return is_block_field(reinterpret_cast<const void*>(block),
+                          std::min(n_chunks, n_chunks_new));
+  }
+
+  /** Determine if a buffer block was created by chunk_t::create()
+  and possibly subject to withdrawal during resize().
+  @param block  block descriptor (not dereferenced)
+  @return whether block has been created by chunk_t::create() */
+  bool is_uncompressed_ext(const buf_block_t *block) const
+  {
+    return is_block_field(reinterpret_cast<const void*>(block), n_chunks);
   }
 
 public:

@@ -2315,6 +2315,7 @@ ibool
 buf_zip_decompress(
 /*===============*/
 	buf_block_t*	block,	/*!< in/out: block */
+	page_t*		page,	/*!< out: page frame */
 	ibool		check)	/*!< in: TRUE=verify the page checksum */
 {
 	const byte*	frame = block->page.zip.data;
@@ -2332,7 +2333,6 @@ buf_zip_decompress(
 
 	ut_ad(block->zip_size());
 	ut_a(block->page.id().space() != 0);
-	page_t* page = block->page.frame();
 
 	if (UNIV_UNLIKELY(check && !page_zip_verify_checksum(frame, size))) {
 
@@ -2715,7 +2715,8 @@ wait_for_unfix:
 
 		/* Decompress the page while not holding
 		buf_pool.mutex. */
-		const auto ok = buf_zip_decompress(block, false);
+		const auto ok = buf_zip_decompress(block,
+						   block->page.frame(), false);
 		--buf_pool.n_pend_unzip;
 		if (!ok) {
 			if (err) {
@@ -3555,7 +3556,8 @@ dberr_t buf_page_t::read_complete(const fil_node_t &node)
   if (zip.data && page)
   {
     buf_pool.n_pend_unzip++;
-    auto ok= buf_zip_decompress(reinterpret_cast<buf_block_t*>(this), false);
+    auto ok= buf_zip_decompress(reinterpret_cast<buf_block_t*>(this), page,
+                                false);
     buf_pool.n_pend_unzip--;
 
     if (!ok)

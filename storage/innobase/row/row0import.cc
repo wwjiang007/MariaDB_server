@@ -262,7 +262,8 @@ public:
 		MY_ATTRIBUTE((warn_unused_result))
 	{
 		m_cur.index = const_cast<dict_index_t*>(index);
-		page_cur_set_before_first(block, &m_cur);
+		m_cur.rec = page_get_infimum_rec(block->page.iframe());
+		m_cur.block = block;
 		return next();
 	}
 
@@ -277,27 +278,24 @@ public:
 	rec_t*	current() UNIV_NOTHROW
 	{
 		ut_ad(!end());
-		return(page_cur_get_rec(&m_cur));
+		return m_cur.rec;
 	}
 
 	buf_block_t* current_block() const { return m_cur.block; }
 
 	/**
 	@return true if cursor is at the end */
-	bool	end() UNIV_NOTHROW
-	{
-		return(page_cur_is_after_last(&m_cur) == TRUE);
-	}
+	bool end() const noexcept { return page_rec_is_supremum(m_cur.rec); }
 
 	/** Remove the current record
 	@return true on success */
 	bool remove(rec_offs* offsets) UNIV_NOTHROW
 	{
 		const dict_index_t* const index = m_cur.index;
-		page_t* const page = page_cur_get_page(&m_cur);
+		page_t* const page = m_cur.block->page.iframe();
 		ut_ad(page_is_leaf(page));
 		/* We can't end up with an empty page unless it is root. */
-		if (page_get_n_recs(page_align(page)) <= 1) {
+		if (page_get_n_recs(page) <= 1) {
 			return(false);
 		}
 
@@ -464,7 +462,7 @@ public:
 	Called for every page in the tablespace. If the page was not
 	updated then its state must be set to BUF_PAGE_NOT_USED. For
 	compressed tables the page descriptor memory will be at offset:
-		block->page.frame() + srv_page_size;
+		block->page.iframe() + srv_page_size;
 	@param block block read from file, note it is not from the buffer pool
 	@retval DB_SUCCESS or error code. */
 	virtual dberr_t operator()(buf_block_t* block) UNIV_NOTHROW = 0;
@@ -481,7 +479,7 @@ public:
 	static byte* get_frame(const buf_block_t* block)
 	{
 		return block->page.zip.data
-			? block->page.zip.data : block->page.frame();
+			? block->page.zip.data : block->page.iframe();
 	}
 
 	/** Invoke the functionality for the callback */
@@ -614,7 +612,7 @@ AbstractCallback::init(
 	os_offset_t		file_size,
 	const buf_block_t*	block) UNIV_NOTHROW
 {
-	const page_t*		page = block->page.frame();
+	const page_t*		page = block->page.iframe();
 
 	m_space_flags = fsp_header_get_flags(page);
 	if (!fil_space_t::is_valid_flags(m_space_flags, true)) {
@@ -753,8 +751,7 @@ dberr_t FetchIndexRootPages::operator()(buf_block_t* block) UNIV_NOTHROW
 		return(DB_CORRUPTION);
 	}
 
-	if (!page_is_comp(block->page.frame()) !=
-	    !dict_table_is_comp(m_table)) {
+	if (!page_is_comp(page) != !dict_table_is_comp(m_table)) {
 		ib_errf(m_trx->mysql_thd, IB_LOG_LEVEL_ERROR,
 			ER_TABLE_SCHEMA_MISMATCH,
 			"ROW_FORMAT mismatch");
@@ -1879,7 +1876,7 @@ PageConverter::update_index_page(
 		return(DB_SUCCESS);
 	}
 
-	buf_frame_t* page = block->page.frame();
+	buf_frame_t* page = block->page.iframe();
 	const index_id_t id = btr_page_get_index_id(page);
 
 	if (id != m_index->m_id) {
@@ -2028,7 +2025,9 @@ PageConverter::update_page(buf_block_t* block, uint16_t& page_type)
 		/* We need to decompress the contents
 		before we can do anything. */
 
-		if (is_compressed_table() && !buf_zip_decompress(block, TRUE)) {
+		if (is_compressed_table()
+		    && !buf_zip_decompress(block, block->page.iframe(),
+					   true)) {
 			return(DB_CORRUPTION);
 		}
 
@@ -3688,7 +3687,7 @@ dberr_t FetchIndexRootPages::run(const fil_iterator_t& iter,
   const bool encrypted= iter.crypt_data != NULL &&
     iter.crypt_data->should_encrypt();
   byte* const readptr= iter.io_buffer;
-  block->page.frame_= readptr;
+  block->page.iframe()= readptr;
 
   if (block->page.zip.data)
     block->page.zip.data= readptr;
@@ -3797,7 +3796,7 @@ static dberr_t fil_iterate(
 		}
 
 		byte*		io_buffer = iter.io_buffer;
-		block->page.frame_ = io_buffer;
+		block->page.iframe() = io_buffer;
 
 		if (block->page.zip.data) {
 			/* Zip IO is done in the compressed page buffer. */
@@ -3836,7 +3835,8 @@ static dberr_t fil_iterate(
 
 		for (ulint i = 0; i < n_pages_read;
 		     ++block->page.id_,
-		     ++i, page_off += size, block->page.frame_ += size) {
+		     ++i, page_off += size,
+		     block->page.iframe() += size) {
 			byte*	src = readptr + i * size;
 			const ulint page_no = page_get_page_no(src);
 			if (!page_no && block->page.id().page_no()) {
@@ -3893,7 +3893,7 @@ page_corrupted:
 				} else if (!page_compressed
 					   && type != FIL_PAGE_TYPE_XDES
 					   && !block->page.zip.data) {
-					block->page.frame_ = src;
+					block->page.iframe() = src;
 					frame_changed = true;
 				} else {
 					ut_ad(dst != src);
@@ -3945,7 +3945,7 @@ page_corrupted:
 			if ((err = callback(block)) != DB_SUCCESS) {
 				goto func_exit;
 			} else if (!updated) {
-				updated = !!block->page.frame();
+				updated = !!block->page.iframe();
 			}
 
 			/* If tablespace is encrypted we use additional
@@ -3953,10 +3953,12 @@ page_corrupted:
 			for decrypting readptr == crypt_io_buffer != io_buffer.
 
 			Destination for decryption is a buffer pool block
-			block->page.frame() == dst == io_buffer that is updated.
+			block->page.iframe() == dst == io_buffer
+			that is updated.
 			Pages that did not require decryption even when
 			tablespace is marked as encrypted are not copied
-			instead block->page.frame() is set to src == readptr.
+			instead block->page.iframe() is set to
+			src, which is equal to readptr.
 
 			For encryption we again use temporary scratch area
 			writeptr != io_buffer == dst
@@ -3989,7 +3991,7 @@ page_corrupted:
 				if (block->page.zip.data) {
 					block->page.zip.data = dst;
 				} else {
-					block->page.frame_ = dst;
+					block->page.iframe() = dst;
 				}
 			}
 
@@ -4152,8 +4154,8 @@ fil_tablespace_iterate(
 
 	buf_block_t* block = reinterpret_cast<buf_block_t*>
 		(ut_zalloc_nokey(sizeof *block));
-	block->page.frame_ = page;
 	block->page.init(buf_page_t::UNFIXED + 1, page_id_t{~0ULL});
+	block->page.iframe() = page;
 
 	/* Read the first page and determine the page size. */
 
@@ -4207,9 +4209,8 @@ fil_tablespace_iterate(
 
 		if (block->page.zip.ssize) {
 			ut_ad(iter.n_io_buffers == 1);
-			block->page.frame_ = iter.io_buffer;
-			block->page.zip.data = block->page.frame_
-				+ srv_page_size;
+			block->page.iframe() = iter.io_buffer;
+			block->page.zip.data = iter.io_buffer + srv_page_size;
 		}
 
 		err = callback.run(iter, block);

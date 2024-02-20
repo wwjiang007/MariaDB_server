@@ -173,7 +173,10 @@ inline uint32_t mlog_decode_len(const byte *log, const byte *end)
 template<unsigned l,mtr_t::write_type w,typename V>
 inline bool mtr_t::write(const buf_block_t &block, void *ptr, V val)
 {
-  ut_ad(ut_align_down(ptr, srv_page_size) == block.page.frame());
+  ut_ad(buf_pool.is_uncompressed_ext(&block) || !is_logged());
+  ut_ad(ut_align_down(ptr, srv_page_size) ==
+        (buf_pool.is_uncompressed_ext(&block)
+         ? block.page.frame() : block.page.iframe()));
   static_assert(l == 1 || l == 2 || l == 4 || l == 8, "wrong length");
   byte buf[l];
 

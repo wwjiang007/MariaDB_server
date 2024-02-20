@@ -2973,9 +2973,10 @@ static buf_block_t *recv_recover_page(buf_block_t *block, mtr_t &mtr,
 			      block->page.id().space(),
 			      block->page.id().page_no()));
 
-	byte *frame = UNIV_LIKELY_NULL(block->page.zip.data)
+	page_t* const page = block->page.frame();
+	byte* const frame = UNIV_LIKELY_NULL(block->page.zip.data)
 		? block->page.zip.data
-		: block->page.frame();
+		: page;
 	const lsn_t page_lsn = init
 		? 0
 		: mach_read_from_8(frame + FIL_PAGE_LSN);
@@ -3131,7 +3132,7 @@ set_start_lsn:
 		ut_ad(end_lsn >= start_lsn);
 		mach_write_to_8(FIL_PAGE_LSN + frame, end_lsn);
 		if (UNIV_LIKELY_NULL(block->page.zip.data)) {
-			buf_zip_decompress(block, false);
+			buf_zip_decompress(block, page, false);
 		} else {
 			mach_write_to_8(srv_page_size
 					- FIL_PAGE_END_LSN_OLD_CHKSUM
