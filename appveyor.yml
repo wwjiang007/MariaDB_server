@@ -14,7 +14,7 @@ build_script:
   # Build minimal configuration
   - mkdir _build
   - cd _build
-  - set BUILD_TYPE=RelWithDebInffo
+  - set BUILD_TYPE=RelWithDebInfo
   - set GENERATOR=
   - call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
   - cmake -E time cmake %GENERATOR% .. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DMYSQL_MAINTAINER_MODE=ERR -DFAST_BUILD=1 -DBISON_EXECUTABLE=C:\cygwin64\bin\bison.exe -DPLUGIN_PERFSCHEMA=NO -DPLUGIN_FEEDBACK=NO -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=1
