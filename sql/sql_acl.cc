@@ -12932,6 +12932,73 @@ err:
 #endif
 }
 
+namespace Show
+{
+  ST_FIELD_INFO users_fields_info[] =
+  {
+    Column("USER", Userhost(), NOT_NULL),
+    Column("WRONG_PASSWORD_ATTEMPTS", SLonglong(), NULLABLE),
+    Column("EXPIRATION_TIME", SLonglong(), NULLABLE),
+    CEnd()
+  };
+};
+
+static bool ignore_max_password_errors(const ACL_USER *acl_user);
+
+int fill_schema_user_access(THD *thd, TABLE_LIST *tables, COND *cond)
+{
+  int res= 0;
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  if (check_access(thd, SELECT_ACL, "mysql", NULL, NULL, 1, 1))
+    return 0;
+  TABLE *table= tables->table;
+
+  mysql_mutex_lock(&acl_cache->lock);
+
+  for (size_t i= 0; res == 0 && i < acl_users.elements; i++)
+  {
+    ACL_USER *user= dynamic_element(&acl_users, i, ACL_USER*);
+
+    ulonglong lifetime= user->password_lifetime < 0
+                        ? default_password_lifetime
+                        : user->password_lifetime;
+
+    bool ignore_password_errors= ignore_max_password_errors(user);
+    bool ignore_expiration_date= lifetime == 0;
+
+    if (ignore_password_errors && ignore_expiration_date)
+      continue;
+
+    Grantee_str grantee(user->user.str, safe_str(user->host.hostname));
+    table->field[0]->store(grantee, strlen(grantee), system_charset_info);
+    if (ignore_password_errors)
+    {
+      table->field[1]->set_null();
+    }
+    else
+    {
+      table->field[1]->set_notnull();
+      table->field[1]->store(user->password_errors);
+    }
+    if (ignore_expiration_date)
+    {
+      table->field[2]->set_null();
+    }
+    else
+    {
+      table->field[2]->set_notnull();
+      table->field[2]->store(user->password_last_changed
+                             + user->password_lifetime * 3600 * 24, true);
+    }
+
+    res= schema_table_store_record(thd, table);
+  }
+
+  mysql_mutex_unlock(&acl_cache->lock);
+#endif
+  return res;
+}
+
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
 /*

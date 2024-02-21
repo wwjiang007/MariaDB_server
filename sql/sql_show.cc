@@ -71,6 +71,8 @@
 #include "lex_symbol.h"
 #define KEYWORD_SIZE 64
 
+#include "my_atomic_wrapper.h"
+
 extern SYMBOL symbols[];
 extern size_t symbols_length;
 
@@ -10123,6 +10125,7 @@ ST_FIELD_INFO files_fields_info[]=
   CEnd()
 };
 
+  extern ST_FIELD_INFO users_fields_info[];
 }; // namespace Show
 
 
@@ -10425,6 +10428,8 @@ ST_SCHEMA_TABLE schema_tables[]=
   {"TRIGGERS", Show::triggers_fields_info, 0,
    get_all_tables, make_old_format, get_schema_triggers_record, 5, 6, 0,
    OPEN_TRIGGER_ONLY|OPTIMIZE_I_S_TABLE},
+  {"LOGON", Show::users_fields_info, 0, fill_schema_user_access, 
+   0, 0, -1, -1, 0, 0},
   {"USER_PRIVILEGES", Show::user_privileges_fields_info, 0,
    fill_schema_user_privileges, 0, 0, -1, -1, 0, 0},
   {"VIEWS", Show::view_fields_info, 0,

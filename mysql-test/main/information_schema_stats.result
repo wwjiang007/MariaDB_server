@@ -69,3 +69,26 @@ TABLE_SCHEMA	TABLE_NAME	INDEX_NAME	ROWS_READ
 select * from information_schema.table_statistics where table_schema='test' and table_name='just_a_test';
 TABLE_SCHEMA	TABLE_NAME	ROWS_READ	ROWS_CHANGED	ROWS_CHANGED_X_INDEXES
 set global userstat=@save_userstat;
+#
+# MDEV-23729 INFORMATION_SCHEMA Table info. about user locked due to 
+# max_password_errors
+#
+create user naughty_user identified by 'naughty_user_passwd';
+ERROR 1045 (28000): Access denied for user 'naughty_user'@'localhost' (using password: YES)
+ERROR 1045 (28000): Access denied for user 'nonexistent_user'@'localhost' (using password: YES)
+select * from information_schema.users;
+USER	WRONG_PASSWORD_ATTEMPTS
+naughty_user	1
+ERROR 1045 (28000): Access denied for user 'naughty_user'@'localhost' (using password: YES)
+ERROR 1045 (28000): Access denied for user 'nonexistent_user'@'localhost' (using password: YES)
+select * from information_schema.users;
+USER	WRONG_PASSWORD_ATTEMPTS
+naughty_user	2
+drop user naughty_user;
+ERROR 1045 (28000): Access denied for user 'naughty_user'@'localhost' (using password: YES)
+select * from information_schema.users;
+USER	WRONG_PASSWORD_ATTEMPTS
+naughty_user	2
+flush users;
+select * from information_schema.users;
+USER	WRONG_PASSWORD_ATTEMPTS
