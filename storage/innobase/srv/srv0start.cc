@@ -1555,6 +1555,74 @@ dberr_t srv_start(bool create_new_db)
 
 		fil_system.space_id_reuse_warned = false;
 
+		/* Upgrade or resize or rebuild the redo logs before
+		generating any dirty pages, so that the old redo log
+		file will not be written to. */
+
+		if (srv_force_recovery == SRV_FORCE_NO_LOG_REDO) {
+			/* Completely ignore the redo log. */
+		} else if (srv_read_only_mode) {
+			/* Leave the redo log alone. */
+		} else if (srv_log_file_size_requested == srv_log_file_size
+			   && srv_log_file_found
+			   && log_sys.log.format
+			   == (srv_encrypt_log
+			       ? log_t::FORMAT_ENC_10_5
+			       : log_t::FORMAT_10_5)
+			   && log_sys.log.subformat == 2) {
+			/* No need to add or remove encryption,
+			upgrade, downgrade, or resize. */
+		} else {
+			/* Prepare to delete the old redo log file */
+			flushed_lsn = srv_prepare_to_delete_redo_log_file(
+				srv_log_file_found);
+
+			DBUG_EXECUTE_IF("innodb_log_abort_1",
+					return(srv_init_abort(DB_ERROR)););
+			/* Prohibit redo log writes from any other
+			threads until creating a log checkpoint at the
+			end of create_log_file(). */
+			ut_d(recv_no_log_write = true);
+			DBUG_ASSERT(!buf_pool.any_io_pending());
+
+			DBUG_EXECUTE_IF("innodb_log_abort_3",
+					return(srv_init_abort(DB_ERROR)););
+			DBUG_PRINT("ib_log", ("After innodb_log_abort_3"));
+
+			/* Stamp the LSN to the data files. */
+			err = fil_write_flushed_lsn(flushed_lsn);
+
+			DBUG_EXECUTE_IF("innodb_log_abort_4", err = DB_ERROR;);
+			DBUG_PRINT("ib_log", ("After innodb_log_abort_4"));
+
+			if (err != DB_SUCCESS) {
+				return(srv_init_abort(err));
+			}
+
+			/* Close the redo log file, so that we can replace it */
+			log_sys.log.close_file();
+
+			DBUG_EXECUTE_IF("innodb_log_abort_5",
+					return(srv_init_abort(DB_ERROR)););
+			DBUG_PRINT("ib_log", ("After innodb_log_abort_5"));
+
+			ib::info()
+				<< "Starting to delete and rewrite log file.";
+
+			srv_log_file_size = srv_log_file_size_requested;
+
+			err = create_log_file(false, flushed_lsn, logfile0);
+
+			if (err == DB_SUCCESS) {
+				err = create_log_file_rename(flushed_lsn,
+							     logfile0);
+			}
+
+			if (err != DB_SUCCESS) {
+				return(srv_init_abort(err));
+			}
+		}
+
 		if (!srv_read_only_mode) {
 			const ulint flags = FSP_FLAGS_PAGE_SSIZE();
 			for (ulint id = 0; id <= srv_undo_tablespaces; id++) {
@@ -1667,75 +1735,6 @@ dberr_t srv_start(bool create_new_db)
 			}
 			return(err);
 		}
-
-		/* Upgrade or resize or rebuild the redo logs before
-		generating any dirty pages, so that the old redo log
-		file will not be written to. */
-
-		if (srv_force_recovery == SRV_FORCE_NO_LOG_REDO) {
-			/* Completely ignore the redo log. */
-		} else if (srv_read_only_mode) {
-			/* Leave the redo log alone. */
-		} else if (srv_log_file_size_requested == srv_log_file_size
-			   && srv_log_file_found
-			   && log_sys.log.format
-			   == (srv_encrypt_log
-			       ? log_t::FORMAT_ENC_10_5
-			       : log_t::FORMAT_10_5)
-			   && log_sys.log.subformat == 2) {
-			/* No need to add or remove encryption,
-			upgrade, downgrade, or resize. */
-		} else {
-			/* Prepare to delete the old redo log file */
-			flushed_lsn = srv_prepare_to_delete_redo_log_file(
-				srv_log_file_found);
-
-			DBUG_EXECUTE_IF("innodb_log_abort_1",
-					return(srv_init_abort(DB_ERROR)););
-			/* Prohibit redo log writes from any other
-			threads until creating a log checkpoint at the
-			end of create_log_file(). */
-			ut_d(recv_no_log_write = true);
-			DBUG_ASSERT(!buf_pool.any_io_pending());
-
-			DBUG_EXECUTE_IF("innodb_log_abort_3",
-					return(srv_init_abort(DB_ERROR)););
-			DBUG_PRINT("ib_log", ("After innodb_log_abort_3"));
-
-			/* Stamp the LSN to the data files. */
-			err = fil_write_flushed_lsn(flushed_lsn);
-
-			DBUG_EXECUTE_IF("innodb_log_abort_4", err = DB_ERROR;);
-			DBUG_PRINT("ib_log", ("After innodb_log_abort_4"));
-
-			if (err != DB_SUCCESS) {
-				return(srv_init_abort(err));
-			}
-
-			/* Close the redo log file, so that we can replace it */
-			log_sys.log.close_file();
-
-			DBUG_EXECUTE_IF("innodb_log_abort_5",
-					return(srv_init_abort(DB_ERROR)););
-			DBUG_PRINT("ib_log", ("After innodb_log_abort_5"));
-
-			ib::info()
-				<< "Starting to delete and rewrite log file.";
-
-			srv_log_file_size = srv_log_file_size_requested;
-
-			err = create_log_file(false, flushed_lsn, logfile0);
-
-			if (err == DB_SUCCESS) {
-				err = create_log_file_rename(flushed_lsn,
-							     logfile0);
-			}
-
-			if (err != DB_SUCCESS) {
-				return(srv_init_abort(err));
-			}
-		}
-
 		recv_sys.debug_free();
 	}
 
