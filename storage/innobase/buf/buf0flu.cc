@@ -190,7 +190,7 @@ void buf_pool_t::insert_into_flush_list(buf_block_t *block, lsn_t lsn)
 
   block->page.set_oldest_modification(lsn);
   MEM_CHECK_DEFINED(block->page.zip.data
-                    ? block->page.zip.data : block->page.frame,
+                    ? block->page.zip.data : block->page.frame(),
                     block->physical_size());
   UT_LIST_ADD_FIRST(flush_list, &block->page);
   ut_d(buf_flush_validate_skip());
