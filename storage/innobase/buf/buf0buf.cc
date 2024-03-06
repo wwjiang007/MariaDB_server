@@ -1406,12 +1406,27 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
     if (ssize_t d= size - old_size)
     {
       os_total_large_mem_allocated+= d;
-#ifdef UNIV_PFS_MEMORY
       if (d > 0)
-        PSI_MEMORY_CALL(memory_alloc)(mem_key_buf_buf_pool, d, &owner);
-      else
-        PSI_MEMORY_CALL(memory_free)(mem_key_buf_buf_pool, -d, owner);
+      {
+#ifdef _WIN32
+        VirtualAlloc(memory + old_size, size_t(d), MEM_COMMIT, PAGE_READWRITE);
 #endif
+#ifdef UNIV_PFS_MEMORY
+        PSI_MEMORY_CALL(memory_alloc)(mem_key_buf_buf_pool, d, &owner);
+#endif
+      }
+      else
+      {
+        MEM_NOACCESS(memory + size, size_t(-d));
+#ifdef _WIN32
+        VirtualFree(memory + size, size_t(-d), MEM_DECOMMIT);
+#elif defined MADV_FREE
+        madvise(memory + size, size_t(-d), MADV_FREE);
+#endif
+#ifdef UNIV_PFS_MEMORY
+        PSI_MEMORY_CALL(memory_free)(mem_key_buf_buf_pool, size_t(-d), owner);
+#endif
+      }
     }
 
     size_in_bytes= size;
@@ -1475,11 +1490,11 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
     if (!n_blocks_to_withdraw)
     {
     withdraw_done:
-      if (n_blocks > n_blocks_alloc_new)
-        n_blocks= n_blocks_alloc_new;
       mysql_mutex_unlock(&mutex);
       mysql_mutex_lock(&LOCK_global_system_variables);
       mysql_mutex_lock(&mutex);
+      if (n_blocks > n_blocks_alloc_new)
+        n_blocks= n_blocks_alloc_new;
       goto resized;
     }
 

@@ -8,8 +8,6 @@ select @@innodb_buffer_pool_chunk_size;
 134217728
 CREATE TABLE t1 (a INT PRIMARY KEY) ENGINE=InnoDB;
 SET GLOBAL innodb_buffer_pool_size=256*1024*1024;
-Warnings:
-Warning	1292	Truncated incorrect innodb_buffer_pool_size value: '268435456'
 DROP TABLE t1;
 SET GLOBAL innodb_buffer_pool_size=
 CAST(@@innodb_buffer_pool_size / 2 AS INTEGER);
