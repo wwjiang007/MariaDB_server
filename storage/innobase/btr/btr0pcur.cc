@@ -259,13 +259,15 @@ static bool btr_pcur_optimistic_latch_leaves(btr_pcur_t *pcur,
         buf_page_get_gen(left_page_id, block->zip_size(), RW_NO_LATCH,
                          nullptr, BUF_GET_POSSIBLY_FREED, mtr))
     {
-      static_assert(MTR_MEMO_S_LOCK == BTR_SEARCH_LEAF << 5, "");
-      static_assert(MTR_MEMO_X_LOCK == BTR_MODIFY_LEAF << 5, "");
+      static_assert(MTR_MEMO_PAGE_S_FIX == mtr_memo_type_t(BTR_SEARCH_LEAF),
+                    "");
+      static_assert(MTR_MEMO_PAGE_X_FIX == mtr_memo_type_t(BTR_MODIFY_LEAF),
+                    "");
 
       if (mode == RW_S_LATCH
           ? left->page.lock.s_lock_try() : left->page.lock.x_lock_try())
       {
-        mtr->lock_register(savepoint + 1, mtr_memo_type_t(mode << 5));
+        mtr->lock_register(savepoint, mtr_memo_type_t(mode));
         if (UNIV_UNLIKELY(left->page.id() != left_page_id))
           goto fail; /* the page was just read and found to be corrupted */
       }
