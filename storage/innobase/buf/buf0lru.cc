@@ -449,24 +449,18 @@ got_block:
 			goto got_block;
 		}
 		const bool wake = buf_pool.need_LRU_eviction();
-		mysql_mutex_unlock(&buf_pool.mutex);
 		mysql_mutex_lock(&buf_pool.flush_list_mutex);
-		const auto n_flush = buf_pool.n_flush();
 		if (wake && !buf_pool.page_cleaner_active()) {
 			buf_pool.page_cleaner_wakeup(true);
 		}
 		mysql_mutex_unlock(&buf_pool.flush_list_mutex);
-		mysql_mutex_lock(&buf_pool.mutex);
-		if (!n_flush) {
-			goto not_found;
-		}
-		if (!buf_pool.try_LRU_scan) {
+		if (wake) {
 			my_cond_wait(&buf_pool.done_free,
 				     &buf_pool.mutex.m_mutex);
 		}
 	}
 
-not_found:
+	IF_DBUG(not_found:,);
 	if (n_iterations > 1) {
 		MONITOR_INC( MONITOR_LRU_GET_FREE_WAITS );
 	}
