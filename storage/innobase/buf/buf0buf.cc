@@ -3549,7 +3549,9 @@ void buf_pool_t::validate()
 	mysql_mutex_unlock(&flush_list_mutex);
 	ut_ad(n_lru + n_free <= curr_size() + n_zip);
 	ut_ad(UT_LIST_GET_LEN(LRU) >= n_lru);
-	ut_ad(UT_LIST_GET_LEN(free) == n_free);
+	ut_ad(UT_LIST_GET_LEN(free) <= n_free);
+	ut_ad(size_in_bytes != size_in_bytes_requested
+	      || UT_LIST_GET_LEN(free) == n_free);
 
 	mysql_mutex_unlock(&mutex);
 
