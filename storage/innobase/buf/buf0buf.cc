@@ -935,14 +935,23 @@ buf_block_t *buf_pool_t::block_from(const void *ptr)
      srv_page_size_shift);
 }
 
+/** Determine the address of the first invalid block descriptor
+@param n_blocks   buf_pool.n_blocks
+@return offset of the first invalid buf_block_t, relative to buf_pool.memory */
+static size_t block_descriptors_in_bytes(size_t n_blocks)
+{
+  const size_t ssize= srv_page_size_shift - UNIV_PAGE_SIZE_SHIFT_MIN;
+  const size_t extent_size= pages_in_extent[ssize];
+  return n_blocks / extent_size * innodb_buffer_pool_extent_size +
+    (n_blocks % extent_size) * sizeof(buf_block_t);
+}
+
 buf_block_t *buf_pool_t::get_nth_page(size_t pos) const
 {
   mysql_mutex_assert_owner(&mutex);
   ut_ad(pos < n_blocks);
-  const size_t pages=
-    pages_in_extent[srv_page_size_shift - UNIV_PAGE_SIZE_SHIFT_MIN];
   return reinterpret_cast<buf_block_t*>
-    (memory + innodb_buffer_pool_extent_size * (pos / pages)) + (pos % pages);
+    (memory + block_descriptors_in_bytes(pos));
 }
 
 #ifdef UNIV_DEBUG
@@ -965,10 +974,13 @@ buf_block_t *buf_pool_t::lazy_allocate()
 {
   mysql_mutex_assert_owner(&buf_pool.mutex);
 
-  if (n_blocks < n_blocks_alloc)
+  if (n_blocks < n_blocks_alloc_usable)
   {
     const size_t n= n_blocks++;
     buf_block_t *block= get_nth_page(n);
+#ifdef __SANITIZE_ADDRESS__
+    MEM_MAKE_ADDRESSABLE(block, sizeof *block);
+#endif
     MEM_MAKE_DEFINED(block, sizeof *block);
     ut_ad(!memcmp(block, field_ref_zero, sizeof *block));
     block->page.lock.init();
@@ -1010,19 +1022,17 @@ size_t buf_pool_t::get_n_blocks(size_t size_in_bytes)
   return n_blocks_alloc;
 }
 
-/** Return the minimum buffer pool size based on page size */
-size_t buf_pool_t::size_in_bytes_min()
+size_t buf_pool_t::blocks_in_bytes(size_t n_blocks)
 {
-  constexpr size_t n_pages_min= (BUF_LRU_MIN_LEN + BUF_LRU_MIN_LEN / 4);
   const size_t ssize= srv_page_size_shift - UNIV_PAGE_SIZE_SHIFT_MIN;
   const size_t extent_size= pages_in_extent[ssize];
-  size_t size_in_bytes_min= n_pages_min / extent_size *
+  size_t size_in_bytes= n_blocks / extent_size *
     innodb_buffer_pool_extent_size;
-  if (size_t remainder= n_pages_min % extent_size)
-    size_in_bytes_min+= (remainder + first_page_in_extent[ssize])
+  if (size_t remainder= n_blocks % extent_size)
+    size_in_bytes+= (remainder + first_page_in_extent[ssize])
       << srv_page_size_shift;
-  ut_ad(get_n_blocks(size_in_bytes_min) == n_pages_min);
-  return ut_calc_align<size_t>(size_in_bytes_min, 1 << 20);
+  ut_ad(get_n_blocks(size_in_bytes) == n_blocks);
+  return size_in_bytes;
 }
 
 /** Create the buffer pool.
@@ -1140,6 +1150,7 @@ bool buf_pool_t::create()
 
   n_blocks= 1;
   n_blocks_alloc= get_n_blocks(actual_size);
+  n_blocks_alloc_usable= n_blocks_alloc;
   n_blocks_to_withdraw= 0;
 
   buf_block_t *block= reinterpret_cast<buf_block_t*>(memory);
@@ -1235,12 +1246,13 @@ void buf_pool_t::close()
   {
     const size_t size{size_in_bytes};
 
-    for (byte *extent= memory, *end= memory + size; extent < end;
-         extent += innodb_buffer_pool_extent_size)
+    for (byte *extent= memory,
+           *end= memory + block_descriptors_in_bytes(n_blocks);
+         extent < end; extent += innodb_buffer_pool_extent_size)
       for (buf_block_t *block= reinterpret_cast<buf_block_t*>(extent),
-             *end= block +
+             *extent_end= block +
              pages_in_extent[srv_page_size_shift - UNIV_PAGE_SIZE_SHIFT_MIN];
-           block < end; block++)
+           block < extent_end && reinterpret_cast<byte*>(block) < end; block++)
         block->page.lock.free();
 
     ut_dodump(memory_unaligned, size_unaligned);
@@ -1331,6 +1343,8 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
   size_t n_blocks_alloc_new= get_n_blocks(size);
 
   mysql_mutex_lock(&mutex);
+  ut_ad(n_blocks <= n_blocks_alloc);
+
   const size_t old_size= size_in_bytes;
   if (old_size != size_in_bytes_requested)
   {
@@ -1342,6 +1356,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
   }
 
   ut_ad(n_blocks_to_withdraw == 0);
+  ut_ad(n_blocks_alloc_usable == n_blocks_alloc);
 
   if (size == old_size)
   {
@@ -1392,9 +1407,11 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
         PSI_MEMORY_CALL(memory_free)(mem_key_buf_buf_pool, -d, owner);
 #endif
     }
+
     size_in_bytes= size;
     size_in_bytes_requested= size;
     n_blocks_alloc= n_blocks_alloc_new;
+    n_blocks_alloc_usable= n_blocks_alloc_new;
     mysql_mutex_unlock(&mutex);
 
     if (significant_change)
@@ -1417,6 +1434,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
   }
   else
   {
+    n_blocks_alloc_usable= n_blocks_alloc_new;
     n_blocks_to_withdraw= size_t(n_blocks_removed);
     size_in_bytes_requested= size;
     mysql_mutex_unlock(&LOCK_global_system_variables);
@@ -1480,6 +1498,8 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
           goto withdraw_done;
       }
     }
+
+    try_LRU_scan= false;
 
     for (buf_page_t *b= UT_LIST_GET_FIRST(LRU), *next; b; b= next)
     {
@@ -3322,18 +3342,18 @@ release_page:
 /** Clear the adaptive hash index on all pages in the buffer pool. */
 ATTRIBUTE_COLD void buf_pool_t::clear_hash_index()
 {
-  ut_ad(!btr_search_enabled);
-
   std::set<dict_index_t*> garbage;
 
-  size_t n= n_blocks;
+  mysql_mutex_lock(&mutex);
+  ut_ad(!btr_search_enabled);
 
-  for (byte *extent= memory, *end= memory + size_in_bytes; extent < end;
-       extent += innodb_buffer_pool_extent_size)
+  for (byte *extent= memory,
+         *end= memory + block_descriptors_in_bytes(n_blocks);
+       extent < end; extent += innodb_buffer_pool_extent_size)
     for (buf_block_t *block= reinterpret_cast<buf_block_t*>(extent),
-           *end= block +
+           *extent_end= block +
            pages_in_extent[srv_page_size_shift - UNIV_PAGE_SIZE_SHIFT_MIN];
-         block < end && n--; block++)
+         block < extent_end && reinterpret_cast<byte*>(block) < end; block++)
     {
       dict_index_t *index= block->index;
       assert_block_ahi_valid(block);
@@ -3366,6 +3386,8 @@ ATTRIBUTE_COLD void buf_pool_t::clear_hash_index()
       block->index= nullptr;
     }
 
+  mysql_mutex_unlock(&mutex);
+
   for (dict_index_t *index : garbage)
     btr_search_lazy_free(index);
 }
@@ -3379,12 +3401,13 @@ void buf_pool_t::assert_all_freed()
 {
   mysql_mutex_lock(&mutex);
 
-  for (byte *extent= memory, *end= memory + size_in_bytes; extent < end;
-       extent += innodb_buffer_pool_extent_size)
-    for (buf_block_t *block= reinterpret_cast<buf_block_t*>(extent),
-           *end= block +
-           pages_in_extent[srv_page_size_shift - UNIV_PAGE_SIZE_SHIFT_MIN];
-         block < end; block++)
+    for (byte *extent= memory,
+           *end= memory + block_descriptors_in_bytes(n_blocks);
+         extent < end; extent += innodb_buffer_pool_extent_size)
+      for (buf_block_t *block= reinterpret_cast<buf_block_t*>(extent),
+             *extent_end= block +
+             pages_in_extent[srv_page_size_shift - UNIV_PAGE_SIZE_SHIFT_MIN];
+           block < extent_end && reinterpret_cast<byte*>(block) < end; block++)
     {
       if (!block->page.in_file())
         continue;

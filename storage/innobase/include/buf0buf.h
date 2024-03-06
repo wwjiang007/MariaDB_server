@@ -1184,6 +1184,9 @@ class buf_pool_t
   size_t n_blocks;
   /** allocated number of block descriptors */
   size_t n_blocks_alloc;
+  /** number of block descriptors available for new allocations;
+  in resize() this can be smaller than n_block_alloc */
+  size_t n_blocks_alloc_usable;
   /** number of blocks that need to be freed in resize() */
   size_t n_blocks_to_withdraw;
 
@@ -1205,9 +1208,10 @@ public:
   /** @return the current size of the buffer pool, in pages */
   size_t curr_size() const { return n_blocks_alloc; }
 
-  /** @return the minimum size of the buffer pool in bytes,
-  for the current innodb_page_size */
-  static size_t size_in_bytes_min();
+  /** Determine the used size of the buffer pool in bytes.
+  @param n_blocks   size of the buffer pool in blocks
+  @return the size needed for n_blocks in bytes, for innodb_page_size */
+  static size_t blocks_in_bytes(size_t n_blocks);
 
 #if defined(DBUG_OFF) && defined(HAVE_MADVISE) && defined(MADV_DODUMP)
   /** Enable buffers to be dumped to core files.

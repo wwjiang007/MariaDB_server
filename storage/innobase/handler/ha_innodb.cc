@@ -3766,7 +3766,9 @@ static int innodb_init_params()
   }
 
   size_t &min= MYSQL_SYSVAR_NAME(buffer_pool_size).min_val;
-  min= buf_pool.size_in_bytes_min();
+  min= ut_calc_align<size_t>
+    (buf_pool.blocks_in_bytes(BUF_LRU_MIN_LEN + BUF_LRU_MIN_LEN / 4),
+     1U << 20);
   size_t innodb_buffer_pool_size= buf_pool.size_in_bytes_requested;
   if (!buf_pool.size_in_bytes_max)
     buf_pool.size_in_bytes_max= innodb_buffer_pool_size < SIZE_T_MAX / 2

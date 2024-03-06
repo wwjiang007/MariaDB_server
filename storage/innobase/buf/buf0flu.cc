@@ -1295,12 +1295,18 @@ static void buf_flush_LRU_list_batch(ulint max, bool evict,
                                      flush_counters_t *n)
 {
   ulint scanned= buf_pool.lazy_allocate_size();
-  ulint free_limit= srv_LRU_scan_depth + buf_pool.is_shrinking();
+  size_t shrinking= buf_pool.is_shrinking();
+  ulint free_limit= srv_LRU_scan_depth + shrinking;
 
   if (scanned >= free_limit)
-    return;
+  {
+    if (UNIV_LIKELY(!shrinking))
+      return;
+    free_limit= shrinking;
+  }
+  else
+    free_limit-= scanned;
 
-  free_limit-= scanned;
   scanned= 0;
 
   const auto neighbors= UT_LIST_GET_LEN(buf_pool.LRU) < BUF_LRU_OLD_MIN_LEN
