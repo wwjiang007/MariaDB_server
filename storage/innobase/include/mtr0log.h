@@ -358,7 +358,7 @@ inline void mtr_t::memmove(const buf_block_t &b, const byte *d, const byte *s,
   with the sign in the least significant bit. */
   uint16_t S= s > d ? uint16_t((s - d) << 1) : uint16_t((d - s) << 1 | 1);
   /* The source offset 0 is not possible. */
-  S-= 1 << 1;
+  S-= uint16_t{1U << 1};
   const uint16_t D= uint16_t(ut_align_offset(d, srv_page_size));
   size_t slen= (S < MIN_2BYTE ? 1 : S < MIN_3BYTE ? 2 : 3);
   byte *l= log_write<MEMMOVE>(b.page.id(), &b.page, lenlen + slen, true, D);
