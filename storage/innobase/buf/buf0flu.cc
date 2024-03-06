@@ -186,7 +186,7 @@ void buf_pool_t::insert_into_flush_list(buf_block_t *block, lsn_t lsn)
   }
   else
     flush_list_bytes+= block->physical_size();
-  ut_ad(flush_list_bytes <= curr_pool_size);
+  ut_ad(flush_list_bytes <= size_in_bytes);
 
   block->page.set_oldest_modification(lsn);
   MEM_CHECK_DEFINED(block->page.zip.data
@@ -761,7 +761,7 @@ ATTRIBUTE_COLD void buf_pool_t::release_freed_page(buf_page_t *bpage)
   ut_d(const lsn_t oldest_modification= bpage->oldest_modification();)
   if (fsp_is_system_temporary(bpage->id().space()))
   {
-    ut_ad(buf_pool.is_uncompressed_ext(bpage));
+    ut_ad(buf_pool.is_uncompressed(bpage));
     ut_ad(oldest_modification == 2);
     bpage->clear_oldest_modification();
   }
@@ -860,7 +860,7 @@ bool buf_page_t::flush(bool evict, fil_space_t *space)
   size_t orig_size;
 #endif
   buf_tmp_buffer_t *slot= nullptr;
-  byte *page= frame();
+  byte *page= buf_pool.is_uncompressed(this) ? frame() : nullptr;
 
   if (UNIV_UNLIKELY(!page)) /* ROW_FORMAT=COMPRESSED */
   {
@@ -970,7 +970,7 @@ static page_id_t buf_flush_check_neighbors(const fil_space_t &space,
          : space.physical_size() == 1024 ? 3 : 0));
   /* When flushed, dirty blocks are searched in neighborhoods of this
   size, and flushed along with the original page. */
-  const ulint s= buf_pool.curr_size / 16;
+  const ulint s= buf_pool.get_n_pages() / 16;
   const uint32_t read_ahead= buf_pool.read_ahead_area;
   const uint32_t buf_flush_area= read_ahead > s
     ? static_cast<uint32_t>(s) : read_ahead;
@@ -1294,12 +1294,14 @@ and move clean blocks to buf_pool.free.
 static void buf_flush_LRU_list_batch(ulint max, bool evict,
                                      flush_counters_t *n)
 {
-  ulint scanned= 0;
-  ulint free_limit= srv_LRU_scan_depth;
+  ulint scanned= buf_pool.lazy_allocate_size();
+  ulint free_limit= srv_LRU_scan_depth + buf_pool.is_shrinking();
 
-  mysql_mutex_assert_owner(&buf_pool.mutex);
-  if (buf_pool.withdraw_target && buf_pool.is_shrinking())
-    free_limit+= buf_pool.withdraw_target - UT_LIST_GET_LEN(buf_pool.withdraw);
+  if (scanned >= free_limit)
+    return;
+
+  free_limit-= scanned;
+  scanned= 0;
 
   const auto neighbors= UT_LIST_GET_LEN(buf_pool.LRU) < BUF_LRU_OLD_MIN_LEN
     ? 0 : srv_flush_neighbors;
@@ -2310,12 +2312,20 @@ func_exit:
 }
 
 TPOOL_SUPPRESS_TSAN
+bool buf_pool_t::running_out() const
+{
+  return !recv_recovery_is_on() && n_blocks == n_blocks_alloc &&
+    UT_LIST_GET_LEN(free) + UT_LIST_GET_LEN(LRU) < n_blocks_alloc / 4;
+}
+
+TPOOL_SUPPRESS_TSAN
 bool buf_pool_t::need_LRU_eviction() const
 {
   /* try_LRU_scan==false means that buf_LRU_get_free_block() is waiting
   for buf_flush_page_cleaner() to evict some blocks */
   return UNIV_UNLIKELY(!try_LRU_scan ||
-                       (UT_LIST_GET_LEN(LRU) > BUF_LRU_MIN_LEN &&
+                       (n_blocks == n_blocks_alloc &&
+                        UT_LIST_GET_LEN(LRU) > BUF_LRU_MIN_LEN &&
                         UT_LIST_GET_LEN(free) < srv_LRU_scan_depth / 2));
 }
 

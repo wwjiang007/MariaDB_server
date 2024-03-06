@@ -1469,7 +1469,7 @@ srv_mon_process_existing_counter(
 
 	/* innodb_buffer_pool_pages_total */
 	case MONITOR_OVLD_BUF_POOL_PAGE_TOTAL:
-		value = buf_pool.get_n_pages();
+		value = buf_pool.curr_size();
 		break;
 
 	/* innodb_buffer_pool_pages_misc */
@@ -1625,7 +1625,7 @@ srv_mon_process_existing_counter(
 		break;
 
 	case MONITOR_OVLD_BUFFER_POOL_SIZE:
-		value = srv_buf_pool_size;
+		value = buf_pool.curr_size();
 		break;
 
 	/* innodb_rows_read */

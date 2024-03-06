@@ -298,13 +298,10 @@ static buf_buddy_free_t* buf_buddy_alloc_zip(ulint i)
 
 	buf = UT_LIST_GET_FIRST(buf_pool.zip_free[i]);
 
-	if (buf_pool.is_shrinking()
-	    && UT_LIST_GET_LEN(buf_pool.withdraw)
-	    < buf_pool.withdraw_target) {
-
+	if (size_t size = buf_pool.shrinking_size()) {
 		while (buf != NULL
 		       && buf_pool.will_be_withdrawn(
-			       reinterpret_cast<byte*>(buf))) {
+			       reinterpret_cast<byte*>(buf), size)) {
 			/* This should be withdrawn, not to be allocated */
 			buf = UT_LIST_GET_NEXT(list, buf);
 		}
@@ -340,38 +337,24 @@ static buf_buddy_free_t* buf_buddy_alloc_zip(ulint i)
 	return(buf);
 }
 
+#ifdef UNIV_DEBUG
+/** number of blocks allocated to the buddy system */
+static size_t buf_buddy_n_frames;
+#endif
+
 /** Deallocate a buffer frame of srv_page_size.
 @param[in]	buf		buffer frame to deallocate */
-static
-void
-buf_buddy_block_free(void* buf)
+static void buf_buddy_block_free(void *buf)
 {
-	const ulint	fold	= BUF_POOL_ZIP_FOLD_PTR(buf);
-	buf_page_t*	bpage;
-	buf_block_t*	block;
-
-	mysql_mutex_assert_owner(&buf_pool.mutex);
-	ut_a(!ut_align_offset(buf, srv_page_size));
-
-	HASH_SEARCH(hash, &buf_pool.zip_hash, fold, buf_page_t*, bpage,
-		    ut_ad(bpage->state() == buf_page_t::MEMORY
-			  && bpage->in_zip_hash),
-		    bpage->frame() == buf);
-	ut_a(bpage);
-	ut_a(bpage->state() == buf_page_t::MEMORY);
-	ut_ad(bpage->in_zip_hash);
-	ut_d(bpage->in_zip_hash = false);
-	HASH_DELETE(buf_page_t, hash, &buf_pool.zip_hash, fold, bpage);
-	bpage->hash = nullptr;
-
-	ut_d(memset(buf, 0, srv_page_size));
-	MEM_UNDEFINED(buf, srv_page_size);
-
-	block = (buf_block_t*) bpage;
-	buf_LRU_block_free_non_file_page(block);
-
-	ut_ad(buf_pool.buddy_n_frames > 0);
-	ut_d(buf_pool.buddy_n_frames--);
+  mysql_mutex_assert_owner(&buf_pool.mutex);
+  buf_block_t *block= buf_pool.block_from(buf);
+  ut_ad(block->page.state() == buf_page_t::MEMORY);
+  ut_ad(block->page.frame() == buf);
+  ut_d(memset(buf, 0, srv_page_size));
+  MEM_UNDEFINED(buf, srv_page_size);
+  buf_LRU_block_free_non_file_page(block);
+  ut_ad(buf_buddy_n_frames > 0);
+  ut_d(buf_buddy_n_frames--);
 }
 
 /**********************************************************************//**
@@ -382,17 +365,9 @@ buf_buddy_block_register(
 /*=====================*/
 	buf_block_t*	block)	/*!< in: buffer frame to allocate */
 {
-	const ulint	fold = BUF_POOL_ZIP_FOLD(block);
-	ut_ad(block->page.state() == buf_page_t::MEMORY);
-
-	ut_a(buf_pool.is_uncompressed_ext(block));
-	ut_a(!ut_align_offset(block->page.frame(), srv_page_size));
-
-	ut_ad(!block->page.in_zip_hash);
-	ut_d(block->page.in_zip_hash = true);
-	HASH_INSERT(buf_page_t, hash, &buf_pool.zip_hash, fold, &block->page);
-
-	ut_d(buf_pool.buddy_n_frames++);
+  ut_ad(buf_pool.is_uncompressed_current(block));
+  ut_ad(block->page.state() == buf_page_t::MEMORY);
+  ut_d(buf_buddy_n_frames++);
 }
 
 /** Allocate a block from a bigger object.
@@ -711,11 +686,12 @@ buf_buddy_realloc(void* buf, ulint size)
 	return(true); /* free_list was enough */
 }
 
-/** Combine all pairs of free buddies. */
-void buf_buddy_condense_free()
+/** Combine all pairs of free buddies.
+@param size  the target innodb_buffer_pool_size */
+void buf_buddy_condense_free(size_t size)
 {
-	mysql_mutex_assert_owner(&buf_pool.mutex);
-	ut_ad(buf_pool.is_shrinking());
+	ut_ad(size);
+	ut_ad(size == buf_pool.shrinking_size());
 
 	for (ulint i = 0; i < UT_ARR_SIZE(buf_pool.zip_free); ++i) {
 		buf_buddy_free_t* buf =
@@ -724,14 +700,11 @@ void buf_buddy_condense_free()
 		/* seek to withdraw target */
 		while (buf != NULL
 		       && !buf_pool.will_be_withdrawn(
-			       reinterpret_cast<byte*>(buf))) {
+				reinterpret_cast<byte*>(buf), size)) {
 			buf = UT_LIST_GET_NEXT(list, buf);
 		}
 
-		while (buf != NULL) {
-			buf_buddy_free_t* next =
-				UT_LIST_GET_NEXT(list, buf);
-
+		while (buf_buddy_free_t* next = buf) {
 			buf_buddy_free_t* buddy =
 				reinterpret_cast<buf_buddy_free_t*>(
 					buf_buddy_get(
@@ -739,18 +712,16 @@ void buf_buddy_condense_free()
 						BUF_BUDDY_LOW << i));
 
 			/* seek to the next withdraw target */
-			while (true) {
-				while (next != NULL
-				       && !buf_pool.will_be_withdrawn(
-						reinterpret_cast<byte*>(next))) {
-					 next = UT_LIST_GET_NEXT(list, next);
+			while ((next = UT_LIST_GET_NEXT(list, next))) {
+				if (!buf_pool.will_be_withdrawn(
+					    reinterpret_cast<byte*>(next),
+					    size)) {
+					continue;
 				}
 
 				if (buddy != next) {
 					break;
 				}
-
-				next = UT_LIST_GET_NEXT(list, next);
 			}
 
 			if (buf_buddy_is_free(buddy, i)

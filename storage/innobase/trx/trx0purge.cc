@@ -1376,7 +1376,7 @@ trx_purge_attach_undo_recs(ulint n_purge_threads, THD *thd)
 		= static_cast<MDL_context*>(thd_mdl_context(thd));
 	ut_ad(mdl_context);
 
-	const size_t max_pages = std::min(buf_pool.curr_size * 3 / 4,
+	const size_t max_pages = std::min(buf_pool.curr_size() * 3 / 4,
 					  size_t{srv_purge_batch_size});
 
 	while (UNIV_LIKELY(srv_undo_sources) || !srv_fast_shutdown) {

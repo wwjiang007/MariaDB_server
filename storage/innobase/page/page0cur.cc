@@ -934,9 +934,9 @@ static void page_zip_dir_balance_slot(buf_block_t *block, page_t *page,
 {
 	ut_ad(block->page.zip.data);
 	ut_ad(page_is_comp(page));
-	ut_ad(page == (buf_pool.is_uncompressed_ext(block)
+	ut_ad(page == (buf_pool.is_uncompressed(block)
                        ? block->page.frame() : block->page.iframe()));
-	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
+	ut_ad(buf_pool.is_uncompressed(block) || !mtr->is_logged());
 	ut_ad(s > 0);
 
 	const ulint n_slots = page_dir_get_n_slots(page);
@@ -2377,9 +2377,9 @@ page_cur_delete_rec(
 	}
 
 	ut_ad(page_align(current_rec)
-	      == (buf_pool.is_uncompressed_ext(block)
+	      == (buf_pool.is_uncompressed(block)
 		  ? block->page.frame() : block->page.iframe()));
-	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
+	ut_ad(buf_pool.is_uncompressed(block) || !mtr->is_logged());
 	page_mem_free(*block, current_rec, data_size, extra_size);
 
 	/* Now we have decremented the number of owned records of the slot.

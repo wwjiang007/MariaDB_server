@@ -86,6 +86,7 @@ to by the buffer pool
 @retval false	if failed because of no free blocks. */
 bool buf_buddy_realloc(void* buf, ulint size);
 
-/** Combine all pairs of free buddies. */
-void buf_buddy_condense_free();
+/** Combine all pairs of free buddies.
+@param size  the target innodb_buffer_pool_size */
+ATTRIBUTE_COLD void buf_buddy_condense_free(size_t size);
 #endif /* buf0buddy_h */

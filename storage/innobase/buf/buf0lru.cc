@@ -136,7 +136,7 @@ static inline void incr_LRU_size_in_bytes(const buf_page_t* bpage)
 
 	buf_pool.stat.LRU_bytes += bpage->physical_size();
 
-	ut_ad(buf_pool.stat.LRU_bytes <= buf_pool.curr_pool_size);
+	ut_ad(buf_pool.stat.LRU_bytes <= buf_pool.curr_pool_size());
 }
 
 /** @return whether the unzip_LRU list should be used for evicting a victim
@@ -266,43 +266,28 @@ static bool buf_LRU_free_from_common_LRU_list(ulint limit)
 @retval	NULL	if the free list is empty */
 buf_block_t* buf_LRU_get_free_only()
 {
-	buf_block_t*	block;
+  size_t shrinking_size= buf_pool.shrinking_size();
 
-	mysql_mutex_assert_owner(&buf_pool.mutex);
+  while (buf_page_t *b= UT_LIST_GET_FIRST(buf_pool.free))
+  {
+    ut_ad(b->in_free_list);
+    ut_d(b->in_free_list = FALSE);
+    ut_ad(!b->oldest_modification());
+    ut_ad(!b->in_LRU_list);
+    ut_a(!b->in_file());
+    UT_LIST_REMOVE(buf_pool.free, b);
 
-	block = reinterpret_cast<buf_block_t*>(
-		UT_LIST_GET_FIRST(buf_pool.free));
+    if (!shrinking_size || !buf_pool.withdraw(*b, shrinking_size))
+    {
+      /* No adaptive hash index entries may point to a free block. */
+      assert_block_ahi_empty(reinterpret_cast<buf_block_t*>(b));
+      b->set_state(buf_page_t::MEMORY);
+      MEM_MAKE_ADDRESSABLE(b->frame(), srv_page_size);
+      return reinterpret_cast<buf_block_t*>(b);
+    }
+  }
 
-	while (block != NULL) {
-		ut_ad(block->page.in_free_list);
-		ut_d(block->page.in_free_list = FALSE);
-		ut_ad(!block->page.oldest_modification());
-		ut_ad(!block->page.in_LRU_list);
-		ut_a(!block->page.in_file());
-		UT_LIST_REMOVE(buf_pool.free, &block->page);
-
-		if (!buf_pool.is_shrinking()
-		    || UT_LIST_GET_LEN(buf_pool.withdraw)
-			>= buf_pool.withdraw_target
-		    || !buf_pool.will_be_withdrawn(block->page)) {
-			/* No adaptive hash index entries may point to
-			a free block. */
-			assert_block_ahi_empty(block);
-
-			block->page.set_state(buf_page_t::MEMORY);
-			MEM_MAKE_ADDRESSABLE(block->page.frame(), srv_page_size);
-			break;
-		}
-
-		/* This should be withdrawn */
-		UT_LIST_ADD_LAST(buf_pool.withdraw, &block->page);
-		ut_d(block->in_withdraw_list = true);
-
-		block = reinterpret_cast<buf_block_t*>(
-			UT_LIST_GET_FIRST(buf_pool.free));
-	}
-
-	return(block);
+  return buf_pool.lazy_allocate();
 }
 
 /******************************************************************//**
@@ -314,12 +299,15 @@ static void buf_LRU_check_size_of_non_data_objects()
 {
   mysql_mutex_assert_owner(&buf_pool.mutex);
 
-  if (recv_recovery_is_on() || buf_pool.n_chunks_new != buf_pool.n_chunks)
+  if (recv_recovery_is_on())
     return;
 
-  const auto s= UT_LIST_GET_LEN(buf_pool.free) + UT_LIST_GET_LEN(buf_pool.LRU);
+  const size_t curr_size{buf_pool.curr_size()};
 
-  if (s < buf_pool.curr_size / 20)
+  auto s= UT_LIST_GET_LEN(buf_pool.free) + UT_LIST_GET_LEN(buf_pool.LRU) +
+    curr_size - buf_pool.get_n_pages();
+
+  if (s < curr_size / 20)
     ib::fatal() << "Over 95 percent of the buffer pool is"
             " occupied by lock heaps"
 #ifdef BTR_CUR_HASH_ADAPT
@@ -327,10 +315,10 @@ static void buf_LRU_check_size_of_non_data_objects()
 #endif /* BTR_CUR_HASH_ADAPT */
             "! Check that your transactions do not set too many"
             " row locks, or review if innodb_buffer_pool_size="
-                << (buf_pool.curr_size >> (20U - srv_page_size_shift))
+                << (curr_size >> (20U - srv_page_size_shift))
                 << "M could be bigger.";
 
-  if (s < buf_pool.curr_size / 3)
+  if (s < curr_size / 3)
   {
     if (!buf_lru_switched_on_innodb_mon && srv_monitor_timer)
     {
@@ -343,7 +331,7 @@ static void buf_LRU_check_size_of_non_data_objects()
 #endif /* BTR_CUR_HASH_ADAPT */
               "! Check that your transactions do not set too many row locks."
               " innodb_buffer_pool_size="
-                 << (buf_pool.curr_size >> (20U - srv_page_size_shift))
+                 << (curr_size >> (20U - srv_page_size_shift))
                  << "M. Starting the InnoDB Monitor to print diagnostics.";
       buf_lru_switched_on_innodb_mon= true;
       srv_print_innodb_monitor= TRUE;
@@ -417,7 +405,8 @@ got_block:
 		const ulint LRU_size = UT_LIST_GET_LEN(buf_pool.LRU);
 		const ulint available = UT_LIST_GET_LEN(buf_pool.free);
 		const ulint scan_depth = srv_LRU_scan_depth / 2;
-		ut_ad(LRU_size <= BUF_LRU_MIN_LEN || available >= scan_depth
+		ut_ad(buf_pool.lazy_allocate_size()
+		      || LRU_size <= BUF_LRU_MIN_LEN || available >= scan_depth
 		      || buf_pool.need_LRU_eviction());
 
 		if (!have_mutex) {
@@ -425,6 +414,7 @@ got_block:
 		}
 
 		if (UNIV_UNLIKELY(available < scan_depth)
+		    && !buf_pool.lazy_allocate_size()
 		    && LRU_size > BUF_LRU_MIN_LEN) {
 			mysql_mutex_lock(&buf_pool.flush_list_mutex);
 			if (!buf_pool.page_cleaner_active()) {
@@ -482,7 +472,7 @@ not_found:
 	}
 
 	if (n_iterations == 21
-	    && srv_buf_pool_old_size == srv_buf_pool_size
+	    && buf_pool.size_in_bytes_requested == buf_pool.curr_pool_size()
 	    && buf_pool.LRU_warned.test_and_set(std::memory_order_acquire)) {
 		IF_DBUG(buf_lru_free_blocks_error_printed = true,);
 		mysql_mutex_unlock(&buf_pool.mutex);
@@ -866,7 +856,7 @@ bool buf_LRU_free_page(buf_page_t *bpage, bool zip)
 		/* fall through */
 	case 0:
 		if (zip || !bpage->zip.data
-		    || !buf_pool.is_uncompressed_ext(bpage)) {
+		    || !buf_pool.is_uncompressed(bpage)) {
 			break;
 		}
 relocate_compressed:
@@ -874,7 +864,6 @@ relocate_compressed:
 		ut_a(b);
 		mysql_mutex_lock(&buf_pool.flush_list_mutex);
 		new (b) buf_page_t(*bpage);
-		b->frame_ = nullptr;
 		{
 			ut_d(uint32_t s=) b->fix();
 			ut_ad(s == buf_page_t::FREED
@@ -885,7 +874,7 @@ relocate_compressed:
 		break;
 	default:
 		if (zip || !bpage->zip.data
-		    || !buf_pool.is_uncompressed_ext(bpage)) {
+		    || !buf_pool.is_uncompressed(bpage)) {
 			/* This would completely free the block. */
 			/* Do not completely free dirty blocks. */
 func_exit:
@@ -926,12 +915,11 @@ func_exit:
 		buf_LRU_block_remove_hashed(), which
 		invokes buf_LRU_remove_block(). */
 		ut_ad(!bpage->in_LRU_list);
-		ut_ad(buf_pool.is_uncompressed_ext(bpage));
+		ut_ad(buf_pool.is_uncompressed(bpage));
 		ut_ad(!((buf_block_t*) bpage)->in_unzip_LRU_list);
 
 		/* The fields of bpage were copied to b before
 		buf_LRU_block_remove_hashed() was invoked. */
-		ut_ad(!b->in_zip_hash);
 		ut_ad(b->in_LRU_list);
 		ut_ad(b->in_page_hash);
 		ut_d(b->in_page_hash = false);
@@ -1054,24 +1042,14 @@ buf_LRU_block_free_non_file_page(
 
 	if (data != NULL) {
 		block->page.zip.data = NULL;
-		buf_pool_mutex_exit_forbid();
-
 		ut_ad(block->zip_size());
-
 		buf_buddy_free(data, block->zip_size());
-
-		buf_pool_mutex_exit_allow();
 		page_zip_set_size(&block->page.zip, 0);
 	}
 
 	if (buf_pool.is_shrinking()
-	    && UT_LIST_GET_LEN(buf_pool.withdraw) < buf_pool.withdraw_target
-	    && buf_pool.will_be_withdrawn(block->page)) {
-		/* This should be withdrawn */
-		UT_LIST_ADD_LAST(
-			buf_pool.withdraw,
-			&block->page);
-		ut_d(block->in_withdraw_list = true);
+	    && buf_pool.withdraw(block->page,
+				 buf_pool.size_in_bytes_requested)) {
 	} else {
 		UT_LIST_ADD_FIRST(buf_pool.free, &block->page);
 		ut_d(block->page.in_free_list = true);
@@ -1117,7 +1095,8 @@ static bool buf_LRU_block_remove_hashed(buf_page_t *bpage, const page_id_t id,
 
 	buf_pool.freed_page_clock += 1;
 
-	page_t *page = bpage->frame();
+	page_t *page = buf_pool.is_uncompressed(bpage)
+		? bpage->frame() : nullptr;
 
 	if (UNIV_LIKELY(!bpage->zip.data)) {
 		MEM_CHECK_ADDRESSABLE(bpage, sizeof(buf_block_t));
@@ -1174,7 +1153,6 @@ static bool buf_LRU_block_remove_hashed(buf_page_t *bpage, const page_id_t id,
 		MEM_CHECK_ADDRESSABLE(bpage->zip.data, bpage->zip_size());
 	}
 
-	ut_ad(!bpage->in_zip_hash);
 	buf_pool.page_hash.remove(chain, bpage);
 	page_hash_latch& hash_lock = buf_pool.page_hash.lock_get(chain);
 
@@ -1186,11 +1164,7 @@ static bool buf_LRU_block_remove_hashed(buf_page_t *bpage, const page_id_t id,
 		ut_ad(!bpage->oldest_modification());
 
 		hash_lock.unlock();
-		buf_pool_mutex_exit_forbid();
-
 		buf_buddy_free(bpage->zip.data, bpage->zip_size());
-
-		buf_pool_mutex_exit_allow();
 		bpage->lock.free();
 		ut_free(bpage);
 		return false;
@@ -1219,12 +1193,7 @@ static bool buf_LRU_block_remove_hashed(buf_page_t *bpage, const page_id_t id,
 			ut_ad(!bpage->in_free_list);
 			ut_ad(!bpage->oldest_modification());
 			ut_ad(!bpage->in_LRU_list);
-			buf_pool_mutex_exit_forbid();
-
 			buf_buddy_free(data, bpage->zip_size());
-
-			buf_pool_mutex_exit_allow();
-
 			page_zip_set_size(&bpage->zip, 0);
 		}
 
@@ -1393,10 +1362,10 @@ void buf_LRU_validate()
 	     bpage != NULL;
              bpage = UT_LIST_GET_NEXT(LRU, bpage)) {
 		ut_ad(bpage->in_file());
-		ut_ad(!bpage->frame()
+		ut_ad(!buf_pool.is_uncompressed(bpage)
 		      || reinterpret_cast<buf_block_t*>(bpage)
 		      ->in_unzip_LRU_list
-		      == bpage->belongs_to_unzip_LRU());
+		      == !!bpage->zip.data);
 
 		if (bpage->is_old()) {
 			const buf_page_t*	prev

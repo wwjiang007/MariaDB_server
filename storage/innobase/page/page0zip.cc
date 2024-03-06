@@ -3924,9 +3924,9 @@ page_zip_write_blob_ptr(
 	ulint		blob_no;
 	ulint		len;
 
-	ut_ad(page == (buf_pool.is_uncompressed_ext(block)
+	ut_ad(page == (buf_pool.is_uncompressed(block)
 		       ? block->page.frame() : block->page.iframe()));
-	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
+	ut_ad(buf_pool.is_uncompressed(block) || !mtr->is_logged());
 	ut_ad(page_simple_validate_new((page_t*) page));
 	ut_ad(page_zip_simple_validate(page_zip));
 	ut_ad(page_zip_get_size(page_zip)
@@ -4030,8 +4030,8 @@ page_zip_write_trx_id_and_roll_ptr(
 {
 	page_zip_des_t* const page_zip = &block->page.zip;
 
-	ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
-	ut_d(const page_t* const page = buf_pool.is_uncompressed_ext(block)
+	ut_ad(buf_pool.is_uncompressed(block) || !mtr->is_logged());
+	ut_d(const page_t* const page = buf_pool.is_uncompressed(block)
 	     ? block->page.frame() : block->page.iframe());
 	ut_ad(page_align(rec) == page);
 	ut_ad(page_simple_validate_new(page));
@@ -4235,9 +4235,9 @@ page_zip_rec_set_owned(
 	ulint		flag,	/*!< in: the owned flag (nonzero=TRUE) */
 	mtr_t*		mtr)	/*!< in/out: mini-transaction */
 {
-  ut_ad(page_align(rec) == (buf_pool.is_uncompressed_ext(block)
+  ut_ad(page_align(rec) == (buf_pool.is_uncompressed(block)
                             ? block->page.frame() : block->page.iframe()));
-  ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
+  ut_ad(buf_pool.is_uncompressed(block) || !mtr->is_logged());
   page_zip_des_t *const page_zip= &block->page.zip;
   byte *slot= page_zip_dir_find(page_zip, page_offset(rec));
   MEM_CHECK_DEFINED(page_zip->data, page_zip_get_size(page_zip));
@@ -4357,9 +4357,9 @@ void page_zip_dir_delete(buf_block_t *block, byte *rec,
   page_t *const page= page_align(rec);
   page_zip_des_t *const page_zip= &block->page.zip;
 
-  ut_ad(page == (buf_pool.is_uncompressed_ext(block)
+  ut_ad(page == (buf_pool.is_uncompressed(block)
                  ? block->page.frame() : block->page.iframe()));
-  ut_ad(buf_pool.is_uncompressed_ext(block) || !mtr->is_logged());
+  ut_ad(buf_pool.is_uncompressed(block) || !mtr->is_logged());
   ut_ad(rec_offs_validate(rec, index, offsets));
   ut_ad(rec_offs_comp(offsets));
 
