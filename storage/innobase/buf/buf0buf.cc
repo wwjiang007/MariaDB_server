@@ -1246,8 +1246,14 @@ void buf_pool_t::close()
   {
     const size_t size{size_in_bytes};
 
+#ifdef __SANITIZE_ADDRESS__
+    MEM_MAKE_ADDRESSABLE(memory, size_in_bytes);
+#else
+    MEM_MAKE_DEFINED(memory, size_in_bytes);
+#endif
+
     for (byte *extent= memory,
-           *end= memory + block_descriptors_in_bytes(n_blocks);
+           *end= memory + block_descriptors_in_bytes(n_blocks_alloc);
          extent < end; extent += innodb_buffer_pool_extent_size)
       for (buf_block_t *block= reinterpret_cast<buf_block_t*>(extent),
              *extent_end= block +
@@ -1490,16 +1496,14 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
 
       if (will_be_withdrawn(*b, size))
       {
-        b->lock.free();
         UT_LIST_REMOVE(free, b);
+        b->lock.free();
         /* satisfy the check in lazy_allocate() */
         ut_d(memset((void*) b, 0, sizeof(buf_block_t)));
         if (!--n_blocks_to_withdraw)
           goto withdraw_done;
       }
     }
-
-    try_LRU_scan= false;
 
     for (buf_page_t *b= UT_LIST_GET_FIRST(LRU), *next; b; b= next)
     {
@@ -1541,6 +1545,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       page_t *page= b->frame(), *frame= block->page.frame();
       memcpy_aligned<OS_FILE_LOG_BLOCK_SIZE>(frame, page, srv_page_size);
       mysql_mutex_lock(&buf_pool.flush_list_mutex);
+      b->lock.free();
       block->page.lock.free();
       new(&block->page) buf_page_t(*b);
 
@@ -1590,14 +1595,16 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       block->left_side= true;
 #endif /* BTR_CUR_HASH_ADAPT */
       hash_lock.unlock();
+      b->lock.free();
       /* satisfy the check in lazy_allocate() */
       ut_d(memset((void*) b, 0, sizeof(buf_block_t)));
       if (!--n_blocks_to_withdraw)
         goto withdraw_done;
     }
 
-    mysql_mutex_unlock(&mutex);
+    try_LRU_scan= false;
     mysql_mutex_lock(&flush_list_mutex);
+    mysql_mutex_unlock(&mutex);
     page_cleaner_wakeup(true);
     my_cond_wait(&done_flush_list, &flush_list_mutex.m_mutex);
     mysql_mutex_unlock(&flush_list_mutex);
