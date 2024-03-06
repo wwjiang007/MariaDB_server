@@ -2994,13 +2994,9 @@ buf_page_get_gen(
   return block;
 }
 
-/********************************************************************//**
-This is the general function used to get optimistic access to a database
-page.
-@return TRUE if success */
 TRANSACTIONAL_TARGET
-bool buf_page_optimistic_get(ulint rw_latch, buf_block_t *block,
-                             uint64_t modify_clock, mtr_t *mtr)
+bool buf_page_optimistic_get(rw_lock_type_t rw_latch, buf_block_t *block,
+                             page_id_t id, uint64_t modify_clock, mtr_t *mtr)
 {
   ut_ad(block);
   ut_ad(mtr);
@@ -3019,7 +3015,6 @@ bool buf_page_optimistic_get(ulint rw_latch, buf_block_t *block,
   }
 
   bool success;
-  const page_id_t id{block->page.id()};
   buf_pool_t::hash_chain &chain= buf_pool.page_hash.cell_get(id.fold());
   bool have_u_not_x= false;
 

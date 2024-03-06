@@ -398,6 +398,7 @@ void ha_partition::init_handler_variables()
   m_start_key.length= 0;
   m_myisam= FALSE;
   m_innodb= FALSE;
+  m_myisammrg= FALSE;
   m_extra_cache= FALSE;
   m_extra_cache_size= 0;
   m_extra_prepare_for_update= FALSE;
@@ -3030,6 +3031,10 @@ bool ha_partition::create_handlers(MEM_ROOT *mem_root)
     DBUG_PRINT("info", ("InnoDB"));
     m_innodb= TRUE;
   }
+  else if (ha_legacy_type(hton0) == DB_TYPE_MRG_MYISAM)
+  {
+    m_myisammrg= TRUE;
+  }
   DBUG_RETURN(FALSE);
 }
 
@@ -3726,7 +3731,7 @@ bool ha_partition::init_partition_bitmaps()
   if (my_bitmap_init(&m_key_not_found_partitions, NULL, m_tot_parts, FALSE))
     DBUG_RETURN(true);
 
-  if (bitmap_init(&m_mrr_used_partitions, NULL, m_tot_parts, TRUE))
+  if (my_bitmap_init(&m_mrr_used_partitions, NULL, m_tot_parts, TRUE))
     DBUG_RETURN(true);
 
   if (my_bitmap_init(&m_opened_partitions, NULL, m_tot_parts, FALSE))
@@ -9309,8 +9314,9 @@ int ha_partition::extra(enum ha_extra_function operation)
   switch (operation) {
     /* Category 1), used by most handlers */
   case HA_EXTRA_NO_KEYREAD:
-    DBUG_RETURN(loop_partitions(end_keyread_cb, NULL));
+    DBUG_RETURN(loop_read_partitions(end_keyread_cb, NULL));
   case HA_EXTRA_KEYREAD:
+    DBUG_RETURN(loop_read_partitions(extra_cb, &operation));
   case HA_EXTRA_FLUSH:
   case HA_EXTRA_PREPARE_FOR_FORCED_CLOSE:
     DBUG_RETURN(loop_partitions(extra_cb, &operation));
@@ -9419,9 +9425,14 @@ int ha_partition::extra(enum ha_extra_function operation)
   }
     /* Category 9) Operations only used by MERGE */
   case HA_EXTRA_ADD_CHILDREN_LIST:
+    if (!m_myisammrg)
+      DBUG_RETURN(0);
     DBUG_RETURN(loop_partitions(extra_cb, &operation));
   case HA_EXTRA_ATTACH_CHILDREN:
   {
+    if (!m_myisammrg)
+      DBUG_RETURN(0);
+
     int result;
     uint num_locks;
     handler **file;
@@ -9440,8 +9451,9 @@ int ha_partition::extra(enum ha_extra_function operation)
     break;
   }
   case HA_EXTRA_IS_ATTACHED_CHILDREN:
-    DBUG_RETURN(loop_partitions(extra_cb, &operation));
   case HA_EXTRA_DETACH_CHILDREN:
+    if (!m_myisammrg)
+      DBUG_RETURN(0);
     DBUG_RETURN(loop_partitions(extra_cb, &operation));
   case HA_EXTRA_MARK_AS_LOG_TABLE:
   /*
@@ -9526,7 +9538,7 @@ int ha_partition::extra_opt(enum ha_extra_function operation, ulong arg)
   switch (operation)
   {
     case HA_EXTRA_KEYREAD:
-      DBUG_RETURN(loop_partitions(start_keyread_cb, &arg));
+      DBUG_RETURN(loop_read_partitions(start_keyread_cb, &arg));
     case HA_EXTRA_CACHE:
       prepare_extra_cache(arg);
       DBUG_RETURN(0);
@@ -9615,13 +9627,52 @@ int ha_partition::loop_extra_alter(enum ha_extra_function operation)
 
 int ha_partition::loop_partitions(handler_callback callback, void *param)
 {
+  int result= loop_partitions_over_map(&m_part_info->lock_partitions,
+                                       callback, param);
+  /* Add all used partitions to be called in reset(). */
+  bitmap_union(&m_partitions_to_reset, &m_part_info->lock_partitions);
+  return result;
+}
+
+
+/*
+  Call callback(part, param) on read_partitions (the ones used by the query)
+*/
+
+int ha_partition::loop_read_partitions(handler_callback callback, void *param)
+{
+  /*
+    There is no need to record partitions on m_partitions_to_reset as 
+    read_partitions were opened, etc - they will be reset anyway.
+  */
+  return loop_partitions_over_map(&m_part_info->read_partitions, callback,
+                                  param);
+}
+
+
+/**
+  Call callback(part, param) on specified set of partitions
+   
+    @part_map                       The set of partitions to call callback for
+    @param callback                 a callback to call for each partition
+    @param param                    a void*-parameter passed to callback
+
+    @return Operation status
+      @retval >0                    Error code
+      @retval 0                     Success
+*/
+
+int ha_partition::loop_partitions_over_map(const MY_BITMAP *part_map,
+                                           handler_callback callback,
+                                           void *param)
+{
   int result= 0, tmp;
   uint i;
-  DBUG_ENTER("ha_partition::loop_partitions");
+  DBUG_ENTER("ha_partition::loop_partitions_over_map");
 
-  for (i= bitmap_get_first_set(&m_part_info->lock_partitions);
+  for (i= bitmap_get_first_set(part_map);
        i < m_tot_parts;
-       i= bitmap_get_next_set(&m_part_info->lock_partitions, i))
+       i= bitmap_get_next_set(part_map, i))
   {
     /*
       This can be called after an error in ha_open.
@@ -9631,8 +9682,6 @@ int ha_partition::loop_partitions(handler_callback callback, void *param)
         (tmp= callback(m_file[i], param)))
       result= tmp;
   }
-  /* Add all used partitions to be called in reset(). */
-  bitmap_union(&m_partitions_to_reset, &m_part_info->lock_partitions);
   DBUG_RETURN(result);
 }
 

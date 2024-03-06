@@ -164,8 +164,8 @@ buf_block_free(
 @param modify_clock  expected value of block->modify_clock
 @param mtr           mini-transaction
 @return whether the latch was acquired (the page is an allocated file page) */
-bool buf_page_optimistic_get(ulint rw_latch, buf_block_t *block,
-                             uint64_t modify_clock, mtr_t *mtr);
+bool buf_page_optimistic_get(rw_lock_type_t rw_latch, buf_block_t *block,
+                             page_id_t id, uint64_t modify_clock, mtr_t *mtr);
 
 /** Try to S-latch a page.
 Suitable for using when holding the lock_sys latches (as it avoids deadlock).
@@ -290,15 +290,6 @@ on the block. */
 UNIV_INLINE
 void
 buf_block_modify_clock_inc(
-/*=======================*/
-	buf_block_t*	block);	/*!< in: block */
-/********************************************************************//**
-Returns the value of the modify clock. The caller must have an s-lock
-or x-lock on the block.
-@return value */
-UNIV_INLINE
-ib_uint64_t
-buf_block_get_modify_clock(
 /*=======================*/
 	buf_block_t*	block);	/*!< in: block */
 #endif /* !UNIV_INNOCHECKSUM */
