@@ -4137,7 +4137,7 @@ static int i_s_innodb_buffer_page_fill(THD *thd, TABLE_LIST *tables, Item *)
     mysql_mutex_lock(&buf_pool.mutex);
     const size_t N= buf_pool.get_n_pages();
     const size_t n= std::min<size_t>(N, MAX_BUF_INFO_CACHED);
-    for (size_t i= 0; i < n; i++, j++)
+    for (size_t i= 0; i < n && j < N; i++, j++)
       i_s_innodb_buffer_page_get_info(&buf_pool.get_nth_page(j)->page, j,
                                       &b[i]);
 
