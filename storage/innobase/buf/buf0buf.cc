@@ -47,8 +47,6 @@ Created 11/5/1995 Heikki Tuuri
 #include "lock0lock.h"
 #include "btr0sea.h"
 #include "ibuf0ibuf.h"
-#include "trx0undo.h"
-#include "trx0purge.h"
 #include "log0log.h"
 #include "dict0stats_bg.h"
 #include "srv0srv.h"

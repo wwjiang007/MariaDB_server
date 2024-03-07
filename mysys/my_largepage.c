@@ -429,7 +429,7 @@ uchar *my_large_virtual_alloc(size_t *size)
     }
   }
 
-  DBUG_RETURN(VirtualAlloc(NULL, *max_size, MEM_RESERVE, PAGE_READWRITE));
+  DBUG_RETURN(VirtualAlloc(NULL, *size, MEM_RESERVE, PAGE_READWRITE));
 # else
   if (my_use_large_pages)
   {
