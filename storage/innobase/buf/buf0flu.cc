@@ -1789,7 +1789,7 @@ after releasing buf_pool.mutex.
 @param max_n    wished maximum mumber of blocks flushed
 @param evict    whether to evict pages after flushing
 @return evict ? number of processed pages : number of pages written */
-ulint buf_flush_LRU(ulint max_n, bool evict)
+static ulint buf_flush_LRU(ulint max_n, bool evict)
 {
   mysql_mutex_assert_owner(&buf_pool.mutex);
 
