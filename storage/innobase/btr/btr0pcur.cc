@@ -222,11 +222,12 @@ static bool btr_pcur_optimistic_latch_leaves(btr_pcur_t *pcur,
   static_assert(BTR_MODIFY_PREV & BTR_MODIFY_LEAF, "");
   static_assert((BTR_SEARCH_PREV ^ BTR_MODIFY_PREV) ==
                 (RW_S_LATCH ^ RW_X_LATCH), "");
+  ut_ad(mtr->get_savepoint() == 0);
 
   const rw_lock_type_t mode=
     rw_lock_type_t(*latch_mode & (RW_X_LATCH | RW_S_LATCH));
   buf_block_t *block= pcur->btr_cur.page_cur.block;
-  const page_id_t id{pcur->old_page_id};
+  page_id_t id{pcur->old_page_id};
 
   if (!buf_page_optimistic_get(mode, block, id, pcur->modify_clock, mtr))
     return false;
@@ -234,73 +235,27 @@ static bool btr_pcur_optimistic_latch_leaves(btr_pcur_t *pcur,
   switch (*latch_mode) {
   default:
     ut_ad(*latch_mode == BTR_SEARCH_LEAF || *latch_mode == BTR_MODIFY_LEAF);
-    return true;
+    break;
   case BTR_SEARCH_PREV:
   case BTR_MODIFY_PREV:
     const auto savepoint= mtr->get_savepoint();
     const page_t *page= block->page.frame();
     const uint32_t left_page_no= btr_page_get_prev(page);
     if (left_page_no == FIL_NULL)
-      return true;
-    const page_id_t left_page_id{id.space(), left_page_no};
-
-    /* We are holding a latch on the current page.
-
-    We will start by buffer-fixing the left sibling. Waiting for a
-    latch on it while holding a latch on the current page could lead
-    to a deadlock, because another thread could hold that latch and
-    wait for a right sibling page latch (the current page).
-
-    If there is a conflict, we will temporarily release our latch on
-    the current block while waiting for a latch on the left sibling.
-    The buffer-fixes on both blocks will prevent eviction. */
-
-    if (buf_block_t *left=
-        buf_page_get_gen(left_page_id, block->zip_size(), RW_NO_LATCH,
-                         nullptr, BUF_GET_POSSIBLY_FREED, mtr))
+      break;
+    id.set_page_no(left_page_no);
+    dberr_t err;
+    if (btr_latch_prev(block, id, block->zip_size(), mode, mtr, &err))
     {
-      static_assert(MTR_MEMO_PAGE_S_FIX == mtr_memo_type_t(BTR_SEARCH_LEAF),
-                    "");
-      static_assert(MTR_MEMO_PAGE_X_FIX == mtr_memo_type_t(BTR_MODIFY_LEAF),
-                    "");
-
-      if (mode == RW_S_LATCH
-          ? left->page.lock.s_lock_try() : left->page.lock.x_lock_try())
-      {
-        mtr->lock_register(savepoint, mtr_memo_type_t(mode));
-        if (UNIV_UNLIKELY(left->page.id() != left_page_id))
-          goto fail; /* the page was just read and found to be corrupted */
-      }
-      else
-      {
-        mtr->release_last_page();
-        if (mode == RW_S_LATCH)
-          block->page.lock.s_unlock();
-        else
-          block->page.lock.x_unlock();
-
-        left= buf_page_get_gen(left_page_id, block->zip_size(), mode,
-                               nullptr, BUF_GET_POSSIBLY_FREED, mtr);
-        if (mode == RW_S_LATCH)
-          block->page.lock.s_lock();
-        else
-          block->page.lock.x_lock();
-
-        if (UNIV_UNLIKELY(!left))
-          goto fail;
-      }
-
-      if (UNIV_UNLIKELY(btr_page_get_next(left->page.frame()) != id.page_no()))
-        goto fail;
-
-      buf_page_make_young_if_needed(&left->page);
       *latch_mode= btr_latch_mode(mode);
-      return true;
+      break;
     }
-  fail:
+
     mtr->rollback_to_savepoint(savepoint);
     return false;
   }
+
+  return true;
 }
 
 /** Restores the stored position of a persistent cursor bufferfixing
@@ -603,26 +558,33 @@ btr_pcur_move_backward_from_page(
 		return true;
 	}
 
-	buf_block_t* block = btr_pcur_get_block(cursor);
-	const page_t* const page = btr_pcur_get_page(cursor);
+	buf_block_t* block = mtr->at_savepoint(0);
+	ut_ad(block == btr_pcur_get_block(cursor));
+	const page_t* const page = block->page.frame();
+	/* btr_pcur_optimistic_latch_leaves() will acquire a latch on
+	the preceding page if one exists;
+	if that fails, btr_cur_t::search_leaf() invoked by
+	btr_pcur_open_with_no_init() will also acquire a latch on the
+	succeeding page. Our caller only needs one page latch. */
+	ut_ad(mtr->get_savepoint() <= 3);
 
 	if (page_has_prev(page)) {
-		buf_block_t* const left_block
-			= mtr->at_savepoint(mtr->get_savepoint() - 1);
+		buf_block_t* const left_block = mtr->at_savepoint(1);
 		ut_ad(!memcmp_aligned<4>(page + FIL_PAGE_OFFSET,
 					 left_block->page.frame()
 					 + FIL_PAGE_NEXT, 4));
 		if (btr_pcur_is_before_first_on_page(cursor)) {
+			/* Reposition on the previous page. */
 			page_cur_set_after_last(left_block,
 						&cursor->btr_cur.page_cur);
 			/* Release the right sibling. */
-		} else {
-			/* Release the left sibling. */
+			mtr->rollback_to_savepoint(0, 1);
 			block = left_block;
 		}
-		mtr->release(*block);
 	}
 
+	mtr->rollback_to_savepoint(1);
+	ut_ad(block == mtr->at_savepoint(0));
 	cursor->latch_mode = latch_mode;
 	cursor->old_rec = nullptr;
 	return false;

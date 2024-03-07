@@ -936,7 +936,6 @@ static inline page_cur_mode_t btr_cur_nonleaf_mode(page_cur_mode_t mode)
   return PAGE_CUR_LE;
 }
 
-static MY_ATTRIBUTE((nonnull))
 /** Acquire a latch on the previous page without violating the latching order.
 @param block    index page
 @param page_id  page identifier with valid space identifier
@@ -958,43 +957,62 @@ int btr_latch_prev(buf_block_t *block, page_id_t page_id, ulint zip_size,
 
   const page_t *const page= block->page.frame();
   page_id.set_page_no(btr_page_get_prev(page));
+  /* We are holding a latch on the current page.
+
+  We will start by buffer-fixing the left sibling. Waiting for a latch
+  on it while holding a latch on the current page could lead to a
+  deadlock, because another thread could hold that latch and wait for
+  a right sibling page latch (the current page).
+
+  If there is a conflict, we will temporarily release our latch on the
+  current block while waiting for a latch on the left sibling.  The
+  buffer-fixes on both blocks will prevent eviction. */
+
   buf_block_t *prev= buf_page_get_gen(page_id, zip_size, RW_NO_LATCH, nullptr,
                                       BUF_GET, mtr, err, false);
   if (UNIV_UNLIKELY(!prev))
     return 0;
 
   int ret= 1;
-  if (UNIV_UNLIKELY(rw_latch == RW_S_LATCH))
+  static_assert(MTR_MEMO_PAGE_S_FIX == mtr_memo_type_t(BTR_SEARCH_LEAF), "");
+  static_assert(MTR_MEMO_PAGE_X_FIX == mtr_memo_type_t(BTR_MODIFY_LEAF), "");
+
+  if (rw_latch == RW_S_LATCH
+      ? prev->page.lock.s_lock_try() : prev->page.lock.x_lock_try())
   {
-    if (UNIV_LIKELY(prev->page.lock.s_lock_try()))
+    mtr->lock_register(prev_savepoint, mtr_memo_type_t(rw_latch));
+    if (UNIV_UNLIKELY(prev->page.id() != page_id))
     {
-      mtr->lock_register(prev_savepoint, MTR_MEMO_PAGE_S_FIX);
-      goto prev_latched;
+    fail:
+      /* the page was just read and found to be corrupted */
+      mtr->rollback_to_savepoint(prev_savepoint);
+      return 0;
     }
-    block->page.lock.s_unlock();
   }
   else
   {
-    if (UNIV_LIKELY(prev->page.lock.x_lock_try()))
-    {
-      mtr->lock_register(prev_savepoint, MTR_MEMO_PAGE_X_FIX);
-      goto prev_latched;
-    }
-    block->page.lock.x_unlock();
+    mtr->release_last_page();
+    if (rw_latch == RW_S_LATCH)
+      block->page.lock.s_unlock();
+    else
+      block->page.lock.x_unlock();
+
+    prev= buf_page_get_gen(page_id, zip_size, rw_latch, prev,
+                           BUF_GET, mtr, err);
+    if (rw_latch == RW_S_LATCH)
+      block->page.lock.s_lock();
+    else
+      block->page.lock.x_lock();
+
+    if (UNIV_UNLIKELY(!prev))
+      goto fail;
+
+    ret= -1;
   }
 
-  ret= -1;
-  mtr->lock_register(prev_savepoint - 1, MTR_MEMO_BUF_FIX);
-  mtr->rollback_to_savepoint(prev_savepoint);
-  prev= buf_page_get_gen(page_id, zip_size, rw_latch, prev,
-                         BUF_GET, mtr, err, false);
-  if (UNIV_UNLIKELY(!prev))
-    return 0;
-  mtr->upgrade_buffer_fix(prev_savepoint - 1, rw_latch);
-
- prev_latched:
   const page_t *const p= prev->page.frame();
-  if (memcmp_aligned<2>(FIL_PAGE_TYPE + p, FIL_PAGE_TYPE + page, 2) ||
+  if (memcmp_aligned<4>(FIL_PAGE_NEXT + p, FIL_PAGE_OFFSET + page, 4) ||
+      memcmp_aligned<2>(FIL_PAGE_TYPE + p, FIL_PAGE_TYPE + page, 2) ||
       memcmp_aligned<2>(PAGE_HEADER + PAGE_INDEX_ID + p,
                         PAGE_HEADER + PAGE_INDEX_ID + page, 8) ||
       page_is_comp(p) != page_is_comp(page))
