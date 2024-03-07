@@ -2291,7 +2291,7 @@ bool buf_pool_t::need_LRU_eviction() const
   /* try_LRU_scan==false means that buf_LRU_get_free_block() is waiting
   for buf_flush_page_cleaner() to evict some blocks */
   return UNIV_UNLIKELY(!try_LRU_scan ||
-                       (n_blocks == n_blocks_alloc &&
+                       (n_blocks >= n_blocks_alloc_usable &&
                         UT_LIST_GET_LEN(LRU) > BUF_LRU_MIN_LEN &&
                         UT_LIST_GET_LEN(free) < srv_LRU_scan_depth / 2));
 }

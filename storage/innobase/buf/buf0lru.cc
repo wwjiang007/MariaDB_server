@@ -391,7 +391,8 @@ got_block:
     const ulint LRU_size= UT_LIST_GET_LEN(buf_pool.LRU);
     const ulint available= UT_LIST_GET_LEN(buf_pool.free);
     const ulint scan_depth= srv_LRU_scan_depth / 2;
-    ut_ad(buf_pool.lazy_allocate_size() || LRU_size <= BUF_LRU_MIN_LEN ||
+    ut_ad(buf_pool.lazy_allocate_size() || buf_pool.is_shrinking() ||
+          LRU_size <= BUF_LRU_MIN_LEN ||
           available >= scan_depth || buf_pool.need_LRU_eviction());
 
     if (UNIV_UNLIKELY(available < scan_depth) &&

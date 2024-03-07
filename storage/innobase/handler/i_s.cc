@@ -4091,8 +4091,10 @@ i_s_innodb_buffer_page_get_info(
 			return;
 		}
 
-		frame = bpage->frame(), page_info->compressed_only = !frame;
-		if (UNIV_LIKELY(frame != nullptr)) {
+		page_info->compressed_only =
+			!buf_pool.is_uncompressed_current(bpage);
+		if (UNIV_LIKELY(!page_info->compressed_only)) {
+			frame = bpage->frame();
 #ifdef BTR_CUR_HASH_ADAPT
 			/* Note: this may be a false positive, that
 			is, block->index will not always be set to
@@ -4127,18 +4129,23 @@ static int i_s_innodb_buffer_page_fill(THD *thd, TABLE_LIST *tables, Item *)
   if (check_global_access(thd, PROCESS_ACL))
     DBUG_RETURN(0);
 
-  mysql_mutex_lock(&buf_pool.mutex);
-  /* we return at most MAX_BUF_INFO_CACHED rows */
-  size_t n= std::min<size_t>(buf_pool.get_n_pages(), MAX_BUF_INFO_CACHED);
-  buf_page_info_t *b= static_cast<buf_page_info_t*>(calloc(n, sizeof *b));
+  int status;
+  buf_page_info_t *b=
+    static_cast<buf_page_info_t*>(calloc(MAX_BUF_INFO_CACHED, sizeof *b));
+  for (size_t j= 0;;)
+  {
+    mysql_mutex_lock(&buf_pool.mutex);
+    const size_t N= buf_pool.get_n_pages();
+    const size_t n= std::min<size_t>(N, MAX_BUF_INFO_CACHED);
+    for (size_t i= 0; i < n; i++, j++)
+      i_s_innodb_buffer_page_get_info(&buf_pool.get_nth_page(j)->page, j,
+                                      &b[i]);
 
-  for (size_t i= 0; i < n; i++)
-    i_s_innodb_buffer_page_get_info(&buf_pool.get_nth_page(i)->page, i, &b[i]);
-
-  mysql_mutex_unlock(&buf_pool.mutex);
-  int status= i_s_innodb_buffer_page_fill(thd, tables, b, n);
-  // FIXME: multiple iterations
-
+    mysql_mutex_unlock(&buf_pool.mutex);
+    status= i_s_innodb_buffer_page_fill(thd, tables, b, n);
+    if (status || j >= N)
+      break;
+  }
   free(b);
   DBUG_RETURN(status);
 }
