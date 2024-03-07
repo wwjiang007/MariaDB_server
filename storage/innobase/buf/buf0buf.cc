@@ -288,13 +288,13 @@ static constexpr size_t compute_overhead(size_t extent, size_t ps, size_t b)
 /** Saturating conversion */
 static constexpr uint16_t scast16(size_t x)
 {
-  return uint16_t(((-(x >> 16)) | (x << 16)) >> 16);
+  return uint16_t(((-int16_t(x >> 16)) | (x << 16)) >> 16);
 }
 
 /** Saturating conversion */
 static constexpr uint8_t scast8(uint16_t x)
 {
-  return uint8_t(((-(x >> 8)) | (x << 8)) >> 8);
+  return uint8_t(((-int8_t(x >> 8)) | (x << 8)) >> 8);
 }
 /** Saturating conversion */
 static constexpr uint8_t scast8(size_t x) { return scast8(scast16(x)); }
