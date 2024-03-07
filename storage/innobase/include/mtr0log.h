@@ -355,10 +355,12 @@ inline void mtr_t::memmove(const buf_block_t &b, const byte *d, const byte *s,
   static_assert(MIN_4BYTE > UNIV_PAGE_SIZE_MAX, "consistency");
   size_t lenlen= (len < MIN_2BYTE ? 1 : len < MIN_3BYTE ? 2 : 3);
   /* The source offset is encoded relative to the destination offset,
-  with the sign in the least significant bit. */
-  uint16_t S= s > d ? uint16_t((s - d) << 1) : uint16_t((d - s) << 1 | 1);
-  /* The source offset 0 is not possible. */
-  S-= uint16_t{1U << 1};
+  with the sign in the least significant bit.
+  Because the source offset 0 is not possible, our encoding
+  subtracts 1 from the offset. */
+  const uint16_t S= s > d
+    ? uint16_t((s - d - 1) << 1)
+    : uint16_t((d - s - 1) << 1 | 1);
   const uint16_t D= uint16_t(ut_align_offset(d, srv_page_size));
   size_t slen= (S < MIN_2BYTE ? 1 : S < MIN_3BYTE ? 2 : 3);
   byte *l= log_write<MEMMOVE>(b.page.id(), &b.page, lenlen + slen, true, D);
