@@ -763,10 +763,9 @@ public:
   inline void write_complete(bool temporary, bool error);
 
   /** Write a flushable page to a file or free a freeable block.
-  @param evict       whether to evict the page on write completion
   @param space       tablespace
   @return whether a page write was initiated and buf_pool.mutex released */
-  bool flush(bool evict, fil_space_t *space);
+  bool flush(fil_space_t *space);
 
   /** Notify that a page in a temporary tablespace has been modified. */
   void set_temp_modified()
