@@ -1265,6 +1265,7 @@ void buf_pool_t::close()
     owner= nullptr;
 #endif
     os_total_large_mem_allocated-= size;
+    MEM_MAKE_ADDRESSABLE(memory_unaligned, size_unaligned);
 #ifdef _WIN32
     VirtualFree(memory_unaligned, 0, MEM_RELEASE);
 #elif defined HAVE_MMAP
