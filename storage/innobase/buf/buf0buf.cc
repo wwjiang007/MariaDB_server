@@ -1394,17 +1394,14 @@ inline bool buf_pool_t::withdraw_blocks()
 
 		/* reserve free_list length */
 		if (UT_LIST_GET_LEN(withdraw) < withdraw_target) {
-			buf_flush_LRU(
-				std::max<ulint>(withdraw_target
-						- UT_LIST_GET_LEN(withdraw),
-						srv_LRU_scan_depth),
-				true);
-			mysql_mutex_unlock(&buf_pool.mutex);
-			buf_dblwr.flush_buffered_writes();
-			mysql_mutex_lock(&buf_pool.flush_list_mutex);
-			buf_flush_wait_LRU_batch_end();
-			mysql_mutex_unlock(&buf_pool.flush_list_mutex);
-			mysql_mutex_lock(&buf_pool.mutex);
+			try_LRU_scan = false;
+			mysql_mutex_lock(&flush_list_mutex);
+			mysql_mutex_unlock(&mutex);
+			page_cleaner_wakeup(true);
+			my_cond_wait(&done_flush_list,
+				     &flush_list_mutex.m_mutex);
+			mysql_mutex_unlock(&flush_list_mutex);
+			mysql_mutex_lock(&mutex);
 		}
 
 		/* relocate blocks/buddies in withdrawn area */
