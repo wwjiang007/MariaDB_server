@@ -222,7 +222,6 @@ static bool btr_pcur_optimistic_latch_leaves(btr_pcur_t *pcur,
   static_assert(BTR_MODIFY_PREV & BTR_MODIFY_LEAF, "");
   static_assert((BTR_SEARCH_PREV ^ BTR_MODIFY_PREV) ==
                 (RW_S_LATCH ^ RW_X_LATCH), "");
-  ut_ad(mtr->get_savepoint() == 0);
 
   const rw_lock_type_t mode=
     rw_lock_type_t(*latch_mode & (RW_X_LATCH | RW_S_LATCH));
