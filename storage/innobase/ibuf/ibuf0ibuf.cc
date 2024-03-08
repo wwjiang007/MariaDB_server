@@ -448,8 +448,8 @@ err_exit:
 	buffer pool size. Once ibuf struct is initialized this
 	value is updated with the user supplied size by calling
 	ibuf_max_size_update(). */
-	ibuf.max_size = ((buf_pool.curr_size() >> srv_page_size_shift)
-			  * CHANGE_BUFFER_DEFAULT_SIZE) / 100;
+	ibuf.max_size = buf_pool.curr_size()
+		* 100 / CHANGE_BUFFER_DEFAULT_SIZE;
 
 	mysql_mutex_init(ibuf_mutex_key, &ibuf_mutex, nullptr);
 	mysql_mutex_init(ibuf_pessimistic_insert_mutex_key,
@@ -506,8 +506,7 @@ ibuf_max_size_update(
 				percentage of the buffer pool size */
 {
 	if (UNIV_UNLIKELY(!ibuf.index)) return;
-	ulint	new_size = ((buf_pool.curr_size() >> srv_page_size_shift)
-			    * new_val) / 100;
+	ulint	new_size = buf_pool.curr_size() * new_val / 100;
 	mysql_mutex_lock(&ibuf_mutex);
 	ibuf.max_size = new_size;
 	mysql_mutex_unlock(&ibuf_mutex);

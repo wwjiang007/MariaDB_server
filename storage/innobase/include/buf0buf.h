@@ -1205,7 +1205,7 @@ public:
   /** @return the current initialized number of block descriptors */
   size_t get_n_pages() const { return n_blocks; }
   /** @return the current size of the buffer pool, in pages */
-  size_t curr_size() const { return n_blocks_alloc; }
+  TPOOL_SUPPRESS_TSAN size_t curr_size() const { return n_blocks_alloc; }
 
   /** Determine the used size of the buffer pool in bytes.
   @param n_blocks   size of the buffer pool in blocks

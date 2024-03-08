@@ -44,7 +44,7 @@ Created 11/5/1995 Heikki Tuuri
 #include "log.h"
 #include "mariadb_stats.h"
 
-/** If there are buf_pool.curr_size per the number below pending reads, then
+/** If there are buf_pool.curr_size() per the number below pending reads, then
 read-ahead is not done: this is to prevent flooding the buffer pool with
 i/o-fixed buffer blocks */
 #define BUF_READ_AHEAD_PEND_LIMIT	2

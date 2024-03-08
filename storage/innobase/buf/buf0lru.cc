@@ -308,15 +308,15 @@ static void buf_LRU_check_size_of_non_data_objects()
     curr_size - buf_pool.get_n_pages();
 
   if (s < curr_size / 20)
-    ib::fatal() << "Over 95 percent of the buffer pool is"
-            " occupied by lock heaps"
+    ib::fatal()
+      << "Over 95 percent of the buffer pool is"
+      " occupied by lock heaps"
 #ifdef BTR_CUR_HASH_ADAPT
-            " or the adaptive hash index"
+      " or the adaptive hash index"
 #endif /* BTR_CUR_HASH_ADAPT */
-            "! Check that your transactions do not set too many"
-            " row locks, or review if innodb_buffer_pool_size="
-                << (curr_size >> (20U - srv_page_size_shift))
-                << "M could be bigger.";
+      "! Check that your transactions do not set too many"
+      " row locks, or review if innodb_buffer_pool_size="
+      << (buf_pool.curr_pool_size() >> 20) << "M could be bigger.";
 
   if (s < curr_size / 3)
   {
@@ -324,15 +324,16 @@ static void buf_LRU_check_size_of_non_data_objects()
     {
       /* Over 67 % of the buffer pool is occupied by lock heaps or
       the adaptive hash index. This may be a memory leak! */
-      ib::warn() << "Over 67 percent of the buffer pool is"
-              " occupied by lock heaps"
+      ib::warn()
+        << "Over 67 percent of the buffer pool is"
+        " occupied by lock heaps"
 #ifdef BTR_CUR_HASH_ADAPT
-              " or the adaptive hash index"
+        " or the adaptive hash index"
 #endif /* BTR_CUR_HASH_ADAPT */
-              "! Check that your transactions do not set too many row locks."
-              " innodb_buffer_pool_size="
-                 << (curr_size >> (20U - srv_page_size_shift))
-                 << "M. Starting the InnoDB Monitor to print diagnostics.";
+        "! Check that your transactions do not set too many row locks."
+        " innodb_buffer_pool_size="
+        << (buf_pool.curr_pool_size() >> 20)
+        << "M. Starting the InnoDB Monitor to print diagnostics.";
       buf_lru_switched_on_innodb_mon= true;
       srv_print_innodb_monitor= TRUE;
       srv_monitor_timer_schedule_now();

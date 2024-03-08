@@ -1175,13 +1175,13 @@ bool buf_pool_t::create()
 
   for (size_t i= 0; i < UT_ARR_SIZE(zip_free); ++i)
     UT_LIST_INIT(zip_free[i], &buf_buddy_free_t::list);
-  ulint s= curr_size();
+  ulint s= n_blocks_alloc;
   s/= BUF_READ_AHEAD_PORTION;
   read_ahead_area= s >= READ_AHEAD_PAGES
     ? READ_AHEAD_PAGES
     : my_round_up_to_next_power(static_cast<uint32_t>(s));
 
-  page_hash.create(2 * curr_size());
+  page_hash.create(2 * n_blocks_alloc);
   last_printout_time= time(nullptr);
 
   mysql_mutex_init(flush_list_mutex_key, &flush_list_mutex,
@@ -3561,7 +3561,7 @@ void buf_pool_t::validate()
 	ut_ad(UT_LIST_GET_LEN(flush_list) == n_flushing);
 
 	mysql_mutex_unlock(&flush_list_mutex);
-	ut_ad(n_lru + n_free <= curr_size() + n_zip);
+	ut_ad(n_lru + n_free <= n_blocks + n_zip);
 	ut_ad(UT_LIST_GET_LEN(LRU) >= n_lru);
 	ut_ad(UT_LIST_GET_LEN(free) <= n_free);
 	ut_ad(size_in_bytes != size_in_bytes_requested
@@ -3585,18 +3585,18 @@ void buf_pool_t::print()
 	ulint		n_found;
 	dict_index_t*	index;
 
-	const ulint size = curr_size();
+	mysql_mutex_lock(&mutex);
 
 	index_ids = static_cast<index_id_t*>(
-		ut_malloc_nokey(size * sizeof *index_ids));
+		ut_malloc_nokey(n_blocks * sizeof *index_ids));
 
-	counts = static_cast<ulint*>(ut_malloc_nokey(sizeof(ulint) * size));
+	counts = static_cast<ulint*>(
+		ut_malloc_nokey(sizeof(ulint) * n_blocks));
 
-	mysql_mutex_lock(&mutex);
 	mysql_mutex_lock(&flush_list_mutex);
 
 	ib::info()
-		<< "[buffer pool: size=" << size
+		<< "[buffer pool: size=" << n_blocks_alloc
 		<< ", database pages=" << UT_LIST_GET_LEN(LRU)
 		<< ", free pages=" << UT_LIST_GET_LEN(free)
 		<< ", modified database pages="
