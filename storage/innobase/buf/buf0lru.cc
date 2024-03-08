@@ -262,34 +262,6 @@ static bool buf_LRU_free_from_common_LRU_list(ulint limit)
 	return(freed);
 }
 
-/** @return a buffer block from the buf_pool.free list
-@retval	NULL	if the free list is empty */
-buf_block_t* buf_LRU_get_free_only()
-{
-  size_t shrinking_size= buf_pool.shrinking_size();
-
-  while (buf_page_t *b= UT_LIST_GET_FIRST(buf_pool.free))
-  {
-    ut_ad(b->in_free_list);
-    ut_d(b->in_free_list = FALSE);
-    ut_ad(!b->oldest_modification());
-    ut_ad(!b->in_LRU_list);
-    ut_a(!b->in_file());
-    UT_LIST_REMOVE(buf_pool.free, b);
-
-    if (!shrinking_size || !buf_pool.withdraw(*b, shrinking_size))
-    {
-      /* No adaptive hash index entries may point to a free block. */
-      assert_block_ahi_empty(reinterpret_cast<buf_block_t*>(b));
-      b->set_state(buf_page_t::MEMORY);
-      MEM_MAKE_ADDRESSABLE(b->frame(), srv_page_size);
-      return reinterpret_cast<buf_block_t*>(b);
-    }
-  }
-
-  return buf_pool.lazy_allocate();
-}
-
 /******************************************************************//**
 Checks how much of buf_pool is occupied by non-data objects like
 AHI, lock heaps etc. Depending on the size of non-data objects this
@@ -385,7 +357,7 @@ buf_block_t *buf_LRU_get_free_block(bool have_mutex)
 
 retry:
   /* If there is a block in the free list, take it */
-  block= buf_LRU_get_free_only();
+  block= buf_pool.allocate();
   if (block)
   {
 got_block:
@@ -429,7 +401,7 @@ got_block:
 
   waited= true;
 
-  while (!(block= buf_LRU_get_free_only()))
+  while (!(block= buf_pool.allocate()))
   {
     buf_pool.stat.LRU_waits++;
 
@@ -975,9 +947,7 @@ buf_LRU_block_free_non_file_page(
 		page_zip_set_size(&block->page.zip, 0);
 	}
 
-	if (buf_pool.is_shrinking()
-	    && buf_pool.withdraw(block->page,
-				 buf_pool.size_in_bytes_requested)) {
+	if (buf_pool.is_shrinking() && buf_pool.withdraw(block->page)) {
 	} else {
 		UT_LIST_ADD_FIRST(buf_pool.free, &block->page);
 		ut_d(block->page.in_free_list = true);

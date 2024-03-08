@@ -422,7 +422,7 @@ byte *buf_buddy_alloc_low(ulint i, bool *lru)
 	}
 
 	/* Try allocating from the buf_pool.free list. */
-	block = buf_LRU_get_free_only();
+	block = buf_pool.allocate();
 
 	if (block) {
 		goto alloc_big;
@@ -445,8 +445,7 @@ func_exit:
 	return reinterpret_cast<byte*>(block);
 }
 
-/** Try to relocate a block. The caller must hold zip_free_mutex, and this
-function will release and lock it again.
+/** Try to relocate a block.
 @param[in]	src		block to relocate
 @param[in]	dst		free block to relocated to
 @param[in]	i		index of buf_pool.zip_free[]
@@ -638,52 +637,67 @@ func_exit:
 	buf_buddy_add_to_free(reinterpret_cast<buf_buddy_free_t*>(buf), i);
 }
 
-/** Try to reallocate a block.
-@param[in]	buf	buf_pool block to be reallocated
-@param[in]	size	block size, up to srv_page_size
-@return	whether the reallocation succeeded */
-bool
-buf_buddy_realloc(void* buf, ulint size)
+/** Reallocate a ROW_FORMAT=COMPRESSED page frame during buf_pool_t::resize().
+@param bpage page descriptor covering a ROW_FORMAT=COMPRESSED page
+@param block uncompressed block for storage
+@return whether the uncompressed block was consumed */
+bool buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
 {
-	buf_block_t*	block = NULL;
-	ulint		i = buf_buddy_get_slot(size);
+  ut_ad(bpage->zip.data);
 
-	mysql_mutex_assert_owner(&buf_pool.mutex);
-	ut_ad(i <= BUF_BUDDY_SIZES);
-	ut_ad(i >= buf_buddy_get_slot(UNIV_ZIP_SIZE_MIN));
+  void *dst= nullptr;
+  ulint size= page_zip_get_size(&bpage->zip);
+  ulint i= buf_buddy_get_slot(size);
 
-	if (i < BUF_BUDDY_SIZES) {
-		/* Try to allocate from the buddy system. */
-		block = reinterpret_cast<buf_block_t*>(buf_buddy_alloc_zip(i));
-	}
+  ut_ad(buf_pool.will_be_withdrawn(bpage->zip.data, size));
+  ut_ad(bpage->can_relocate());
+  ut_ad(i <= BUF_BUDDY_SIZES);
+  ut_ad(i >= buf_buddy_get_slot(UNIV_ZIP_SIZE_MIN));
 
-	if (block == NULL) {
-		/* Try allocating from the buf_pool.free list. */
-		block = buf_LRU_get_free_only();
+  if (UNIV_LIKELY(i < BUF_BUDDY_SIZES))
+    dst= buf_buddy_alloc_zip(i);
 
-		if (block == NULL) {
-			return(false); /* free_list was not enough */
-		}
+  if (!dst)
+  {
+    buf_buddy_block_register(block);
+    dst= buf_buddy_alloc_from(block->page.frame(), i, BUF_BUDDY_SIZES);
+    ut_ad(dst);
+    block= nullptr;
+  }
 
-		buf_buddy_block_register(block);
+  void *src= bpage->zip.data;
+  memcpy_aligned<UNIV_ZIP_SIZE_MIN>(dst, src, size);
+  bpage->zip.data= static_cast<page_zip_t*>(dst);
+  buf_pool.buddy_stat[i].relocated++;
 
-		block = reinterpret_cast<buf_block_t*>(
-			buf_buddy_alloc_from(
-				block->page.frame(), i, BUF_BUDDY_SIZES));
-	}
+recombine:
+  ut_ad(src == ut_align_down(src, BUF_BUDDY_LOW << i));
+  MEM_UNDEFINED(src, BUF_BUDDY_LOW << i);
 
-	buf_pool.buddy_stat[i].used++;
+  if (i == BUF_BUDDY_SIZES)
+  {
+    buf_buddy_block_free(src);
+    return !block;
+  }
 
-	/* Try to relocate the buddy of buf to the free block. */
-	if (buf_buddy_relocate(buf, block, i, true)) {
-		/* succeeded */
-		buf_buddy_free_low(buf, i);
-	} else {
-		/* failed */
-		buf_buddy_free_low(block, i);
-	}
+  ut_ad(i < BUF_BUDDY_SIZES);
 
-	return(true); /* free_list was enough */
+  /* Try to combine adjacent blocks. */
+  buf_buddy_free_t *buddy= reinterpret_cast<buf_buddy_free_t*>
+    (buf_buddy_get(static_cast<byte*>(src), BUF_BUDDY_LOW << i));
+
+  if (buf_buddy_is_free(buddy, i) == BUF_BUDDY_STATE_FREE)
+  {
+    /* The buddy is free: recombine */
+    buf_buddy_remove_from_free(buddy, i);
+    ut_ad(!buf_pool.contains_zip(buddy));
+    i++;
+    src= ut_align_down(src, BUF_BUDDY_LOW << i);
+    goto recombine;
+  }
+
+  buf_buddy_add_to_free(static_cast<buf_buddy_free_t*>(src), i);
+  return !block;
 }
 
 /** Combine all pairs of free buddies.

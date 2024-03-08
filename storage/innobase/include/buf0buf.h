@@ -1282,9 +1282,8 @@ public:
 
   /** Withdraw a block if needed in case resize() is shrinking.
   @param bpage  buffer pool block
-  @param size   size_in_bytes_requested
   @return whether the block was withdrawn */
-  ATTRIBUTE_COLD bool withdraw(buf_page_t &bpage, size_t size);
+  ATTRIBUTE_COLD bool withdraw(buf_page_t &bpage);
 
   /** Release and evict a corrupted page.
   @param bpage    x-latched page that was found corrupted
@@ -1746,14 +1745,17 @@ public:
   Protected by buf_pool.mutex. */
   Atomic_relaxed<bool> try_LRU_scan;
 
-  /** Whether we have warned to be running out of buffer pool */
-  std::atomic_flag LRU_warned;
-
 	/* @} */
 
 	/** @name LRU replacement algorithm fields */
 	/* @{ */
 
+private:
+  /** Whether we have warned to be running out of buffer pool;
+  only modified by buf_flush_page_cleaner():
+  set while holding mutex, cleared while holding flush_list_mutex */
+  Atomic_relaxed<bool> LRU_warned;
+public:
 	UT_LIST_BASE_NODE_T(buf_page_t) free;
 					/*!< base node of the free
 					block list */
@@ -1801,9 +1803,31 @@ public:
   /** Sentinels to detect if pages are read into the buffer pool while
   a delete-buffering operation is pending. Protected by mutex. */
   buf_page_t watch[innodb_purge_threads_MAX + 1];
+
+  /** Test and set LRU_warned */
+  bool LRU_warned_test_and_set()
+  {
+    mysql_mutex_assert_owner(&mutex);
+    const bool warned= LRU_warned;
+    LRU_warned= true;
+    return warned;
+  }
+
+  /** Clear LRU_warned */
+  void LRU_warned_clear()
+  {
+    mysql_mutex_assert_owner(&flush_list_mutex);
+    LRU_warned= false;
+  }
+
   /** Reserve a buffer. */
   buf_tmp_buffer_t *io_buf_reserve(bool wait_for_reads)
   { return io_buf.reserve(wait_for_reads); }
+
+  /** Try to allocate a block.
+  @return a buffer block
+  @retval nullptr if no blocks are available */
+  buf_block_t *allocate();
 
 private:
   /** Remove a block from the flush list. */

@@ -990,6 +990,32 @@ buf_block_t *buf_pool_t::lazy_allocate()
   return nullptr;
 }
 
+buf_block_t *buf_pool_t::allocate()
+{
+  mysql_mutex_assert_owner(&mutex);
+
+  while (buf_page_t *b= UT_LIST_GET_FIRST(free))
+  {
+    ut_ad(b->in_free_list);
+    ut_d(b->in_free_list = FALSE);
+    ut_ad(!b->oldest_modification());
+    ut_ad(!b->in_LRU_list);
+    ut_a(!b->in_file());
+    UT_LIST_REMOVE(free, b);
+
+    if (UNIV_LIKELY(!n_blocks_to_withdraw) || !withdraw(*b))
+    {
+      /* No adaptive hash index entries may point to a free block. */
+      assert_block_ahi_empty(reinterpret_cast<buf_block_t*>(b));
+      b->set_state(buf_page_t::MEMORY);
+      MEM_MAKE_ADDRESSABLE(b->frame(), srv_page_size);
+      return reinterpret_cast<buf_block_t*>(b);
+    }
+  }
+
+  return lazy_allocate();
+}
+
 /** Create the hash table.
 @param n  the lower bound of n_cells */
 void buf_pool_t::page_hash_table::create(ulint n)
@@ -1327,9 +1353,11 @@ buf_tmp_buffer_t *buf_pool_t::io_buf_t::reserve(bool wait_for_reads)
   }
 }
 
-ATTRIBUTE_COLD bool buf_pool_t::withdraw(buf_page_t &bpage, size_t size)
+ATTRIBUTE_COLD bool buf_pool_t::withdraw(buf_page_t &bpage)
 {
-  if (!will_be_withdrawn(bpage, size))
+  mysql_mutex_assert_owner(&mutex);
+
+  if (!will_be_withdrawn(bpage, size_in_bytes_requested))
     return false;
   ut_ad(n_blocks_to_withdraw);
   n_blocks_to_withdraw--;
@@ -1519,7 +1547,9 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       }
     }
 
-    for (buf_page_t *b= UT_LIST_GET_FIRST(LRU), *next; b; b= next)
+    buf_block_t *block= allocate();
+
+    for (buf_page_t *b= UT_LIST_GET_FIRST(LRU), *next; block && b; b= next)
     {
       ut_ad(b->in_LRU_list);
       ut_a(b->in_file());
@@ -1529,39 +1559,77 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       if (!b->can_relocate())
         continue;
 
-      if (UNIV_LIKELY_NULL(b->zip.data) &&
-          will_be_withdrawn(b->zip.data, size))
-      {
-        if (!buf_buddy_realloc(b->zip.data, page_zip_get_size(&b->zip)))
-          break;
-        if (UNIV_UNLIKELY(!n_blocks_to_withdraw))
-          goto withdraw_done;
-      }
-
-      if (!is_uncompressed(b) || !will_be_withdrawn(*b, size))
-        continue;
-
-      ut_ad(is_uncompressed_current(b));
-
-      buf_block_t *block= buf_LRU_get_free_only();
-      if (!block)
-        break;
-
       const page_id_t id{b->id()};
       hash_chain &chain= page_hash.cell_get(id.fold());
       page_hash_latch &hash_lock= page_hash.lock_get(chain);
-      /* It does not make sense to use transactional_lock_guard
-         here, because copying innodb_page_size (4096 to 65536) bytes
-         as well as other changes would likely make the memory
-         transaction too large. */
       hash_lock.lock();
 
-      page_t *page= b->frame(), *frame= block->page.frame();
-      memcpy_aligned<OS_FILE_LOG_BLOCK_SIZE>(frame, page, srv_page_size);
-      mysql_mutex_lock(&buf_pool.flush_list_mutex);
-      b->lock.free();
-      block->page.lock.free();
-      new(&block->page) buf_page_t(*b);
+      {
+        /* relocate flush_list and b->page.zip */
+        bool have_flush_list_mutex= false;
+
+        switch (b->oldest_modification()) {
+        case 2:
+          ut_ad(fsp_is_system_temporary(id.space()));
+          /* fall through */
+        case 0:
+          break;
+        default:
+          mysql_mutex_lock(&buf_pool.flush_list_mutex);
+          switch (ut_d(lsn_t om=) b->oldest_modification()) {
+          case 1:
+            delete_from_flush_list(b);
+            /* fall through */
+          case 0:
+            mysql_mutex_unlock(&buf_pool.flush_list_mutex);
+            break;
+          default:
+            ut_ad(om != 2);
+            have_flush_list_mutex= true;
+          }
+        }
+
+        if (!b->can_relocate())
+        {
+        next:
+          if (have_flush_list_mutex)
+            mysql_mutex_unlock(&flush_list_mutex);
+          hash_lock.unlock();
+          continue;
+        }
+
+        if (UNIV_LIKELY_NULL(b->zip.data) &&
+            will_be_withdrawn(b->zip.data, size))
+        {
+          const bool consumed= buf_buddy_shrink(b, block);
+          if (UNIV_UNLIKELY(!n_blocks_to_withdraw))
+          {
+            if (have_flush_list_mutex)
+              mysql_mutex_unlock(&flush_list_mutex);
+            hash_lock.unlock();
+            goto withdraw_done;
+          }
+          if (consumed && !(block= allocate()))
+            goto next;
+        }
+
+        if (!is_uncompressed(b) || !will_be_withdrawn(*b, size))
+          goto next;
+
+        ut_ad(is_uncompressed_current(b));
+
+        page_t *page= b->frame(), *frame= block->page.frame();
+        memcpy_aligned<OS_FILE_LOG_BLOCK_SIZE>(frame, page, srv_page_size);
+        b->lock.free();
+        block->page.lock.free();
+        new(&block->page) buf_page_t(*b);
+
+        if (have_flush_list_mutex)
+        {
+          buf_flush_relocate_on_flush_list(b, &block->page);
+          mysql_mutex_unlock(&flush_list_mutex);
+        }
+      }
 
       /* relocate LRU list */
       if (buf_page_t *prev_b= LRU_remove(b))
@@ -1593,9 +1661,6 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       /* relocate page_hash */
       ut_ad(b == page_hash.get(id, chain));
       buf_pool.page_hash.replace(chain, b, &block->page);
-      if (!fsp_is_system_temporary(id.space()))
-        buf_flush_relocate_on_flush_list(b, &block->page);
-      mysql_mutex_unlock(&buf_pool.flush_list_mutex);
 
       buf_block_modify_clock_inc(block);
 
@@ -1609,15 +1674,23 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       block->left_side= true;
 #endif /* BTR_CUR_HASH_ADAPT */
       hash_lock.unlock();
-      b->lock.free();
       /* satisfy the check in lazy_allocate() */
       ut_d(memset((void*) b, 0, sizeof(buf_block_t)));
       if (!--n_blocks_to_withdraw)
         goto withdraw_done;
+
+      block= allocate();
+    }
+
+    mysql_mutex_lock(&flush_list_mutex);
+
+    if (LRU_warned)
+    {
+      mysql_mutex_unlock(&flush_list_mutex);
+      goto withdraw_abort;
     }
 
     try_LRU_scan= false;
-    mysql_mutex_lock(&flush_list_mutex);
     mysql_mutex_unlock(&mutex);
     page_cleaner_wakeup(true);
     my_cond_wait(&done_flush_list, &flush_list_mutex.m_mutex);
@@ -1630,10 +1703,12 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
     if (!thd_kill_level(thd))
       goto withdraw_retry;
 
+  withdraw_abort:
+    n_blocks_alloc_usable= n_blocks_alloc;
     size_in_bytes_requested= size_in_bytes;
     mysql_mutex_unlock(&mutex);
     my_printf_error(ER_WRONG_USAGE, "innodb_buffer_pool_size change aborted",
-                    MYF(0));
+                    MYF(ME_ERROR_LOG));
     mysql_mutex_lock(&LOCK_global_system_variables);
   }
 

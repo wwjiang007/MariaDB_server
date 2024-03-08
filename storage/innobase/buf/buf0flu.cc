@@ -1767,7 +1767,7 @@ static ulint buf_flush_LRU(ulint max_n)
     pthread_cond_broadcast(&buf_pool.done_free);
   }
   else if (!pages && !buf_pool.try_LRU_scan &&
-           !buf_pool.LRU_warned.test_and_set(std::memory_order_acquire))
+           !buf_pool.LRU_warned_test_and_set())
   {
     /* For example, with the minimum innodb_buffer_pool_size=5M and
     the default innodb_page_size=16k there are only a little over 316
@@ -2337,7 +2337,7 @@ static void buf_flush_page_cleaner()
           (!UT_LIST_GET_LEN(buf_pool.flush_list) ||
            srv_max_dirty_pages_pct_lwm == 0.0))
       {
-        buf_pool.LRU_warned.clear(std::memory_order_release);
+        buf_pool.LRU_warned_clear();
         /* We are idle; wait for buf_pool.page_cleaner_wakeup() */
         my_cond_wait(&buf_pool.do_flush_list,
                      &buf_pool.flush_list_mutex.m_mutex);
