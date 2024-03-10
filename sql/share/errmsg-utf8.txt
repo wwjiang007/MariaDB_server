@@ -12272,3 +12272,11 @@ ER_JSON_SCHEMA_KEYWORD_UNSUPPORTED
         sw "%s neno kuu halitumiki"
 ER_JSON_NO_VARIABLE_SCHEMA
         eng "Variable schema is not supported."
+ER_WARN_OPTIMIZER_HINT_SYNTAX_ERROR
+  eng "Optimizer hint syntax error"
+ER_WARN_BAD_MAX_EXECUTION_TIME
+  eng "Unsupported MAX_EXECUTION_TIME"
+ER_WARN_UNSUPPORTED_MAX_EXECUTION_TIME
+  eng "MAX_EXECUTION_TIME hint is supported by SELECT statements only"
+ER_WARN_CONFLICTING_HINT
+  eng "Hint %s is ignored as conflicting/duplicated"

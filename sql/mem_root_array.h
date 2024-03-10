@@ -62,10 +62,38 @@ public:
     resize(n, val);
   }
 
+  // OLEGS TODO: my addition to fix compilation errors
+  // Copy-constructor
+  Mem_root_array(const Mem_root_array& other)
+  {
+    do_copy_construct(other);
+  }
+
+  Mem_root_array &operator=(const Mem_root_array& other)
+  {
+    if(this != &other)
+    {
+      clear();
+      do_copy_construct(other);
+    }
+  }
+  // OLEGS TODO: implement move-constructor and apply at sql_hints.yy
+
   ~Mem_root_array()
   {
     clear();
   }
+
+  // OLEGS: remove
+  // void init(MEM_ROOT *root)
+  // {
+  //   DBUG_ASSERT(root != NULL);
+
+  //   m_root= root;
+  //   m_array= NULL;
+  //   m_size= 0;
+  //   m_capacity= 0;
+  // }
 
   Element_type &at(size_t n)
   {
@@ -231,14 +259,21 @@ public:
   const MEM_ROOT *mem_root() const { return m_root; }
 
 private:
-  MEM_ROOT *const m_root;
-  Element_type   *m_array;
-  size_t          m_size;
-  size_t          m_capacity;
+  MEM_ROOT       *m_root= nullptr;
+  Element_type   *m_array= nullptr;
+  size_t          m_size= 0;
+  size_t          m_capacity= 0;
 
-  // Not (yet) implemented.
-  Mem_root_array(const Mem_root_array&);
-  Mem_root_array &operator=(const Mem_root_array&);
+  void do_copy_construct(const Mem_root_array& other)
+  {
+    m_root= other.m_root;
+    reserve(other.size());
+    for (size_t ix= 0; ix < other.size(); ++ix)
+    {
+      Element_type *p= &m_array[ix];
+      new (p) Element_type(other[ix]);
+    }
+  }
 };
 
 

@@ -33,7 +33,7 @@ SET(MYSYS_SOURCES  array.c charset-def.c charset.c my_default.c
 				my_quick.c my_read.c my_redel.c my_rename.c my_seek.c my_sleep.c
 				my_static.c my_symlink.c my_symlink2.c my_sync.c my_thr_init.c 
 				my_basename.c
-				my_write.c ptr_cmp.c queues.c stacktrace.c
+                                my_write.c ptr_cmp.c queues.c stacktrace.c
 				string.c thr_lock.c thr_mutex.c
 				thr_rwlock.c thr_timer.c
                                 tree.c typelib.c base64.c my_memmem.c
