@@ -3000,17 +3000,6 @@ bool buf_page_optimistic_get(rw_lock_type_t rw_latch, buf_block_t *block,
   ut_ad(mtr->is_active());
   ut_ad(rw_latch == RW_S_LATCH || rw_latch == RW_X_LATCH);
 
-  if (have_transactional_memory);
-  else if (UNIV_UNLIKELY(!block->page.frame))
-    return false;
-  else
-  {
-    const auto state= block->page.state();
-    if (UNIV_UNLIKELY(state < buf_page_t::UNFIXED ||
-                      state >= buf_page_t::READ_FIX))
-      return false;
-  }
-
   bool success;
   buf_pool_t::hash_chain &chain= buf_pool.page_hash.cell_get(id.fold());
   bool have_u_not_x= false;
@@ -3018,7 +3007,8 @@ bool buf_page_optimistic_get(rw_lock_type_t rw_latch, buf_block_t *block,
   {
     transactional_shared_lock_guard<page_hash_latch> g
       {buf_pool.page_hash.lock_get(chain)};
-    if (UNIV_UNLIKELY(id != block->page.id() || !block->page.frame))
+    if (UNIV_UNLIKELY(!buf_pool.is_uncompressed(block) ||
+                      id != block->page.id() || !block->page.frame))
       return false;
     const auto state= block->page.state();
     if (UNIV_UNLIKELY(state < buf_page_t::UNFIXED ||
