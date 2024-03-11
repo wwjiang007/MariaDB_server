@@ -397,6 +397,7 @@ Item_func::quick_fix_field()
     }
   }
   base_flags|= item_base_t::FIXED;
+  eval_not_null_tables(NULL);
 }
 
 
