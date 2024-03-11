@@ -968,6 +968,7 @@ int btr_latch_prev(buf_block_t *block, page_id_t page_id, ulint zip_size,
   current block while waiting for a latch on the left sibling.  The
   buffer-fixes on both blocks will prevent eviction. */
 
+ retry:
   buf_block_t *prev= buf_page_get_gen(page_id, zip_size, RW_NO_LATCH, nullptr,
                                       BUF_GET, mtr, err, false);
   if (UNIV_UNLIKELY(!prev))
@@ -1003,6 +1004,17 @@ int btr_latch_prev(buf_block_t *block, page_id_t page_id, ulint zip_size,
       block->page.lock.s_lock();
     else
       block->page.lock.x_lock();
+
+    const page_id_t prev_page_id= page_id;
+    page_id.set_page_no(btr_page_get_prev(page));
+
+    if (UNIV_UNLIKELY(page_id != prev_page_id))
+    {
+      mtr->release_last_page();
+      if (page_id.page_no() == FIL_NULL)
+        return -1;
+      goto retry;
+    }
 
     if (UNIV_UNLIKELY(!prev))
       goto fail;
