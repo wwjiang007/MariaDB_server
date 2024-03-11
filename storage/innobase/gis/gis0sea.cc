@@ -1685,15 +1685,15 @@ corrupted:
 
 	buf_page_make_young_if_needed(&page_cursor->block->page);
 
-	/* Get the page SSN */
-	page = page_cur_get_page(page_cursor);
-	page_ssn = page_get_ssn_id(page);
-
 	if (page_cur_search_with_match(tuple, PAGE_CUR_LE,
 				       &up_match, &low_match, page_cursor,
 				       nullptr)) {
 		goto corrupted;
 	}
+
+	/* Get the page SSN */
+	page = page_cur_get_page(page_cursor);
+	page_ssn = page_get_ssn_id(page);
 
 	if (low_match == r_cursor->old_n_fields) {
 		const rec_t*	rec;
