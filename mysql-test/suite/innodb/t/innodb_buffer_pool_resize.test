@@ -1,9 +1,9 @@
-#
-# WL6117 : Resize the InnoDB Buffer Pool Online
-#
-
 --source include/have_innodb.inc
 --source include/have_sequence.inc
+
+--echo #
+--echo # MDEV-29445: Reorganize buffer pool (and remove chunks)
+--echo #
 
 --disable_query_log
 call mtr.add_suppression("innodb_buffer_pool_size change aborted");
