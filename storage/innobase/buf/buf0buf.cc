@@ -1192,6 +1192,7 @@ bool buf_pool_t::create()
 
   mysql_mutex_init(buf_pool_mutex_key, &mutex, MY_MUTEX_INIT_FAST);
 
+  UT_LIST_INIT(withdrawn, &buf_page_t::list);
   UT_LIST_INIT(free, &buf_page_t::list);
   UT_LIST_ADD_LAST(free, &block->page);
   ut_d(block->page.in_free_list= true);
@@ -1356,14 +1357,14 @@ buf_tmp_buffer_t *buf_pool_t::io_buf_t::reserve(bool wait_for_reads)
 ATTRIBUTE_COLD bool buf_pool_t::withdraw(buf_page_t &bpage)
 {
   mysql_mutex_assert_owner(&mutex);
-
-  if (!will_be_withdrawn(bpage, size_in_bytes_requested))
-    return false;
   ut_ad(n_blocks_to_withdraw);
+  ut_ad(first_to_withdraw);
+  ut_ad(!bpage.zip.data);
+  if (&bpage < first_to_withdraw)
+    return false;
   n_blocks_to_withdraw--;
   bpage.lock.free();
-  /* satisfy the check in lazy_allocate() */
-  ut_d(memset((void*) &bpage, 0, sizeof(buf_block_t)));
+  UT_LIST_ADD_LAST(withdrawn, &bpage);
   return true;
 }
 
@@ -1388,8 +1389,10 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
     return;
   }
 
+  ut_ad(UT_LIST_GET_LEN(withdrawn) == 0);
   ut_ad(n_blocks_to_withdraw == 0);
   ut_ad(n_blocks_alloc_usable == n_blocks_alloc);
+  ut_ad(!first_to_withdraw);
 
   if (size == old_size)
   {
@@ -1421,8 +1424,10 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
     size_in_bytes_requested= size;
   resized:
     const size_t old_blocks= n_blocks_alloc;
+    ut_ad(UT_LIST_GET_LEN(withdrawn) == 0);
     ut_ad(n_blocks_to_withdraw == 0);
-    ut_ad(n_blocks <= n_blocks_alloc);
+    ut_ad(!first_to_withdraw);
+    ut_ad(n_blocks <= old_blocks);
     ut_ad(n_blocks <= n_blocks_alloc_new);
 
     size_t s= n_blocks_alloc_new / BUF_READ_AHEAD_PORTION;
@@ -1484,6 +1489,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
   {
     n_blocks_alloc_usable= n_blocks_alloc_new;
     n_blocks_to_withdraw= size_t(n_blocks_removed);
+    first_to_withdraw= &get_nth_page(n_blocks_alloc_new)->page;
     size_in_bytes_requested= size;
     mysql_mutex_unlock(&LOCK_global_system_variables);
 
@@ -1517,6 +1523,13 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
     if (!n_blocks_to_withdraw)
     {
     withdraw_done:
+      while (buf_page_t *b= UT_LIST_GET_FIRST(withdrawn))
+      {
+        UT_LIST_REMOVE(withdrawn, b);
+        /* satisfy the check in lazy_allocate() */
+        ut_d(memset((void*) b, 0, sizeof(buf_block_t)));
+      }
+      first_to_withdraw= nullptr;
       mysql_mutex_unlock(&mutex);
       mysql_mutex_lock(&LOCK_global_system_variables);
       mysql_mutex_lock(&mutex);
@@ -1530,18 +1543,18 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
     for (buf_page_t *b= UT_LIST_GET_FIRST(free), *next; b; b= next)
     {
       ut_ad(b->in_free_list);
-      ut_ad(!b->oldest_modification());
       ut_ad(!b->in_LRU_list);
-      ut_a(!b->in_file());
+      ut_ad(!b->zip.data);
+      ut_ad(!b->oldest_modification());
+      ut_a(b->state() == buf_page_t::NOT_USED);
 
       next= UT_LIST_GET_NEXT(list, b);
 
-      if (will_be_withdrawn(*b, size))
+      if (b >= first_to_withdraw)
       {
         UT_LIST_REMOVE(free, b);
         b->lock.free();
-        /* satisfy the check in lazy_allocate() */
-        ut_d(memset((void*) b, 0, sizeof(buf_block_t)));
+        UT_LIST_ADD_LAST(withdrawn, b);
         if (!--n_blocks_to_withdraw)
           goto withdraw_done;
       }
@@ -1613,7 +1626,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
             goto next;
         }
 
-        if (!is_uncompressed(b) || !will_be_withdrawn(*b, size))
+        if (!is_uncompressed(b) || b < first_to_withdraw)
           goto next;
 
         ut_ad(is_uncompressed_current(b));
@@ -1642,11 +1655,17 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
 
       ut_ad(block->page.in_LRU_list);
 
+      /* relocate page_hash */
+      ut_ad(b == page_hash.get(id, chain));
+      buf_pool.page_hash.replace(chain, b, &block->page);
+
       if (b->zip.data)
       {
+        ut_d(b->zip.data= nullptr); /* silence contains_zip() */
         /* relocate unzip_LRU list */
         buf_block_t *old_block= reinterpret_cast<buf_block_t*>(b);
         ut_ad(old_block->in_unzip_LRU_list);
+        ut_d(old_block->in_unzip_LRU_list= false);
         ut_d(block->in_unzip_LRU_list= true);
 
         buf_block_t *prev= UT_LIST_GET_PREV(unzip_LRU, old_block);
@@ -1657,10 +1676,6 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
         else
           UT_LIST_ADD_FIRST(unzip_LRU, block);
       }
-
-      /* relocate page_hash */
-      ut_ad(b == page_hash.get(id, chain));
-      buf_pool.page_hash.replace(chain, b, &block->page);
 
       buf_block_modify_clock_inc(block);
 
@@ -1674,8 +1689,11 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       block->left_side= true;
 #endif /* BTR_CUR_HASH_ADAPT */
       hash_lock.unlock();
-      /* satisfy the check in lazy_allocate() */
-      ut_d(memset((void*) b, 0, sizeof(buf_block_t)));
+
+      ut_d(b->in_LRU_list= false);
+
+      b->set_state(buf_page_t::NOT_USED);
+      UT_LIST_ADD_LAST(withdrawn, b);
       if (!--n_blocks_to_withdraw)
         goto withdraw_done;
 
@@ -1704,8 +1722,22 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       goto withdraw_retry;
 
   withdraw_abort:
+    ut_ad(n_blocks_alloc > n_blocks_alloc_usable);
+    ut_ad(size_in_bytes > size_in_bytes_requested);
     n_blocks_alloc_usable= n_blocks_alloc;
+    n_blocks_to_withdraw= 0;
+    first_to_withdraw= nullptr;
     size_in_bytes_requested= size_in_bytes;
+
+    while (buf_page_t *b= UT_LIST_GET_FIRST(withdrawn))
+    {
+      UT_LIST_REMOVE(withdrawn, b);
+      UT_LIST_ADD_LAST(free, b);
+      ut_d(b->in_free_list= true);
+      ut_ad(b->state() == buf_page_t::NOT_USED);
+      b->lock.init();
+    }
+
     mysql_mutex_unlock(&mutex);
     my_printf_error(ER_WRONG_USAGE, "innodb_buffer_pool_size change aborted",
                     MYF(ME_ERROR_LOG));
@@ -3592,6 +3624,7 @@ void buf_pool_t::validate()
 
 		switch (const auto f = block->page.state()) {
 		case buf_page_t::NOT_USED:
+			ut_ad(!block->page.in_LRU_list);
 			n_free++;
 			break;
 		case buf_page_t::MEMORY:

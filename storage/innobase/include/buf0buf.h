@@ -1188,6 +1188,8 @@ class buf_pool_t
   size_t n_blocks_alloc_usable;
   /** number of blocks that need to be freed in resize() */
   size_t n_blocks_to_withdraw;
+  /** first block to withdraw in resize() */
+  const buf_page_t *first_to_withdraw;
 
   /** amount of memory allocated to the buffer pool and descriptors;
   protected by mutex */
@@ -1268,16 +1270,6 @@ public:
     ut_ad(ptr >= memory);
     ut_ad(ptr < memory + size_in_bytes_max);
     return ptr >= memory + size;
-  }
-
-  /** Determine whether a block needs to be withdrawn during resize().
-  @param bpage  buffer pool block
-  @param size   size_in_bytes_requested
-  @return whether the frame will be withdrawn */
-  bool will_be_withdrawn(const buf_page_t &bpage, size_t size) const
-  {
-    return will_be_withdrawn(reinterpret_cast<const byte*>(&bpage), size) ||
-      will_be_withdrawn(bpage.frame(), size);
   }
 
   /** Withdraw a block if needed in case resize() is shrinking.
@@ -1755,10 +1747,14 @@ private:
   only modified by buf_flush_page_cleaner():
   set while holding mutex, cleared while holding flush_list_mutex */
   Atomic_relaxed<bool> LRU_warned;
+
+  /** withdrawn blocks during resize() */
+  UT_LIST_BASE_NODE_T(buf_page_t) withdrawn;
+
 public:
-	UT_LIST_BASE_NODE_T(buf_page_t) free;
-					/*!< base node of the free
-					block list */
+  /** list of blocks available for allocate() */
+  UT_LIST_BASE_NODE_T(buf_page_t) free;
+
   /** broadcast each time when the free list grows or try_LRU_scan is set;
   protected by mutex */
   pthread_cond_t done_free;
