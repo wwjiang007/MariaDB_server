@@ -1615,6 +1615,8 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
             will_be_withdrawn(b->zip.data, size))
         {
           const bool consumed= buf_buddy_shrink(b, block);
+          ut_ad(mach_read_from_4(b->zip.data + FIL_PAGE_OFFSET) ==
+                id.page_no());
           if (UNIV_UNLIKELY(!n_blocks_to_withdraw))
           {
             if (have_flush_list_mutex)
@@ -1661,6 +1663,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
 
       if (b->zip.data)
       {
+        ut_ad(mach_read_from_4(b->zip.data + FIL_PAGE_OFFSET) == id.page_no());
         ut_d(b->zip.data= nullptr); /* silence contains_zip() */
         /* relocate unzip_LRU list */
         buf_block_t *old_block= reinterpret_cast<buf_block_t*>(b);
@@ -1680,8 +1683,6 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
       buf_block_modify_clock_inc(block);
 
 #ifdef BTR_CUR_HASH_ADAPT
-      /* This code should only be executed by resize(),
-         while the adaptive hash index is disabled. */
       assert_block_ahi_empty_on_init(block);
       block->index= nullptr;
       block->n_hash_helps= 0;
@@ -1758,6 +1759,7 @@ static void buf_relocate(buf_page_t *bpage, buf_page_t *dpage)
   buf_pool_t::hash_chain &chain= buf_pool.page_hash.cell_get(id.fold());
   ut_ad(!buf_pool.is_uncompressed(bpage));
   mysql_mutex_assert_owner(&buf_pool.mutex);
+  ut_ad(mach_read_from_4(bpage->zip.data + FIL_PAGE_OFFSET) == id.page_no());
   ut_ad(buf_pool.page_hash.lock_get(chain).is_write_locked());
   ut_ad(bpage == buf_pool.page_hash.get(id, chain));
   ut_ad(!buf_pool.watch_is_sentinel(*bpage));
@@ -2146,6 +2148,8 @@ buf_zip_decompress(
 
 	ut_ad(block->zip_size());
 	ut_a(block->page.id().space() != 0);
+	ut_ad(mach_read_from_4(frame + FIL_PAGE_OFFSET)
+              == block->page.id().page_no());
 
 	if (UNIV_UNLIKELY(check && !page_zip_verify_checksum(frame, size))) {
 
