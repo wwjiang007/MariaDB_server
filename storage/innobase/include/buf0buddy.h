@@ -83,8 +83,9 @@ ATTRIBUTE_COLD MY_ATTRIBUTE((nonnull, warn_unused_result))
 /** Reallocate a ROW_FORMAT=COMPRESSED page frame during buf_pool_t::resize().
 @param bpage page descriptor covering a ROW_FORMAT=COMPRESSED page
 @param block uncompressed block for storage
-@return whether the uncompressed block was consumed */
-bool buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block);
+@return block
+@retval nullptr if the block was consumed */
+buf_block_t *buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block);
 
 /** Combine all pairs of free buddies.
 @param size  the target innodb_buffer_pool_size */

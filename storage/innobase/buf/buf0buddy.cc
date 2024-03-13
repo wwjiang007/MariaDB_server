@@ -582,8 +582,7 @@ recombine:
 	/* Do not recombine blocks if there are few free blocks.
 	We may waste up to 15360*max_len bytes to free blocks
 	(1024 + 2048 + 4096 + 8192 = 15360) */
-	if (UT_LIST_GET_LEN(buf_pool.zip_free[i]) < 16
-	    && !buf_pool.is_shrinking()) {
+	if (UT_LIST_GET_LEN(buf_pool.zip_free[i]) < 16) {
 		goto func_exit;
 	}
 
@@ -640,8 +639,9 @@ func_exit:
 /** Reallocate a ROW_FORMAT=COMPRESSED page frame during buf_pool_t::resize().
 @param bpage page descriptor covering a ROW_FORMAT=COMPRESSED page
 @param block uncompressed block for storage
-@return whether the uncompressed block was consumed */
-bool buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
+@return block
+@retval nullptr if the block was consumed */
+buf_block_t *buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
 {
   ut_ad(bpage->zip.data);
 
@@ -670,85 +670,91 @@ bool buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
   bpage->zip.data= static_cast<page_zip_t*>(dst);
   buf_pool.buddy_stat[i].relocated++;
 
-recombine:
-  ut_ad(src == ut_align_down(src, BUF_BUDDY_LOW << i));
-  MEM_UNDEFINED(src, BUF_BUDDY_LOW << i);
-
-  if (i == BUF_BUDDY_SIZES)
+  for (bool combined= false;; combined= true)
   {
-    buf_buddy_block_free(src);
-    return !block;
-  }
+    MEM_UNDEFINED(src, BUF_BUDDY_LOW << i);
+    ut_ad(i < BUF_BUDDY_SIZES);
+    /* Try to combine adjacent blocks. */
+    buf_buddy_free_t *buddy= reinterpret_cast<buf_buddy_free_t*>
+      (buf_buddy_get(static_cast<byte*>(src), BUF_BUDDY_LOW << i));
 
-  ut_ad(i < BUF_BUDDY_SIZES);
+    if (buf_buddy_is_free(buddy, i) != BUF_BUDDY_STATE_FREE)
+    {
+      if (combined)
+        buf_buddy_add_to_free(static_cast<buf_buddy_free_t*>(src), i);
+      break;
+    }
 
-  /* Try to combine adjacent blocks. */
-  buf_buddy_free_t *buddy= reinterpret_cast<buf_buddy_free_t*>
-    (buf_buddy_get(static_cast<byte*>(src), BUF_BUDDY_LOW << i));
-
-  if (buf_buddy_is_free(buddy, i) == BUF_BUDDY_STATE_FREE)
-  {
     /* The buddy is free: recombine */
     buf_buddy_remove_from_free(buddy, i);
     ut_ad(!buf_pool.contains_zip(buddy));
     i++;
     src= ut_align_down(src, BUF_BUDDY_LOW << i);
-    goto recombine;
+    if (i == BUF_BUDDY_SIZES)
+    {
+      buf_buddy_block_free(src);
+      break;
+    }
   }
 
-  buf_buddy_add_to_free(static_cast<buf_buddy_free_t*>(src), i);
-  return !block;
+  return block;
 }
 
 /** Combine all pairs of free buddies.
 @param size  the target innodb_buffer_pool_size */
-void buf_buddy_condense_free(size_t size)
+ATTRIBUTE_COLD void buf_buddy_condense_free(size_t size)
 {
-	ut_ad(size);
-	ut_ad(size == buf_pool.shrinking_size());
+  ut_ad(size);
+  ut_ad(size == buf_pool.shrinking_size());
 
-	for (ulint i = 0; i < UT_ARR_SIZE(buf_pool.zip_free); ++i) {
-		buf_buddy_free_t* buf =
-			UT_LIST_GET_FIRST(buf_pool.zip_free[i]);
+  for (ulint i= 0; i < array_elements(buf_pool.zip_free); i++)
+  {
+    buf_buddy_free_t *buf= UT_LIST_GET_FIRST(buf_pool.zip_free[i]);
 
-		/* seek to withdraw target */
-		while (buf != NULL
-		       && !buf_pool.will_be_withdrawn(
-				reinterpret_cast<byte*>(buf), size)) {
-			buf = UT_LIST_GET_NEXT(list, buf);
-		}
+    /* seek to withdraw target */
+    while (buf &&
+           !buf_pool.will_be_withdrawn(reinterpret_cast<byte*>(buf), size))
+      buf= UT_LIST_GET_NEXT(list, buf);
 
-		while (buf_buddy_free_t* next = buf) {
-			buf_buddy_free_t* buddy =
-				reinterpret_cast<buf_buddy_free_t*>(
-					buf_buddy_get(
-						reinterpret_cast<byte*>(buf),
-						BUF_BUDDY_LOW << i));
+    for (buf_buddy_free_t *next= buf; buf; buf= next)
+    {
+      buf_buddy_free_t *buddy= reinterpret_cast<buf_buddy_free_t*>
+        (buf_buddy_get(reinterpret_cast<byte*>(buf), BUF_BUDDY_LOW << i));
 
-			/* seek to the next withdraw target */
-			while ((next = UT_LIST_GET_NEXT(list, next))) {
-				if (!buf_pool.will_be_withdrawn(
-					    reinterpret_cast<byte*>(next),
-					    size)) {
-					continue;
-				}
+      /* seek to the next withdraw target */
+      do
+      {
+        while ((next= UT_LIST_GET_NEXT(list, next)) &&
+               !buf_pool.will_be_withdrawn(reinterpret_cast<byte*>(next),
+                                           size)) {}
+      }
+      while (buddy == next);
 
-				if (buddy != next) {
-					break;
-				}
-			}
+      if (buf_buddy_is_free(buddy, i) != BUF_BUDDY_STATE_FREE)
+        continue;
 
-			if (buf_buddy_is_free(buddy, i)
-			    == BUF_BUDDY_STATE_FREE) {
-				/* Both buf and buddy are free.
-				Try to combine them. */
-				buf_buddy_remove_from_free(buf, i);
-				buf_pool.buddy_stat[i].used++;
+      buf_buddy_remove_from_free(buf, i);
+      ulint j= i;
+    recombine:
+      buf_buddy_remove_from_free(buddy, j);
+      ut_ad(!buf_pool.contains_zip(buddy));
+      j++;
+      buf= static_cast<buf_buddy_free_t*>
+        (ut_align_down(buf, BUF_BUDDY_LOW << j));
+      MEM_UNDEFINED(buf, BUF_BUDDY_LOW << j);
 
-				buf_buddy_free_low(buf, i);
-			}
+      if (j == BUF_BUDDY_SIZES)
+      {
+        buf_buddy_block_free(buf);
+        continue;
+      }
 
-			buf = next;
-		}
-	}
+      buddy= reinterpret_cast<buf_buddy_free_t*>
+        (buf_buddy_get(reinterpret_cast<byte*>(buf), BUF_BUDDY_LOW << j));
+      if (buf_buddy_is_free(buddy, j) == BUF_BUDDY_STATE_FREE)
+        goto recombine;
+
+      buf_buddy_add_to_free(buf, j);
+    }
+  }
 }

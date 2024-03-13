@@ -1614,7 +1614,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
         if (UNIV_LIKELY_NULL(b->zip.data) &&
             will_be_withdrawn(b->zip.data, size))
         {
-          const bool consumed= buf_buddy_shrink(b, block);
+          block= buf_buddy_shrink(b, block);
           ut_ad(mach_read_from_4(b->zip.data + FIL_PAGE_OFFSET) ==
                 id.page_no());
           if (UNIV_UNLIKELY(!n_blocks_to_withdraw))
@@ -1622,9 +1622,11 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
             if (have_flush_list_mutex)
               mysql_mutex_unlock(&flush_list_mutex);
             hash_lock.unlock();
+            if (block)
+              buf_LRU_block_free_non_file_page(block);
             goto withdraw_done;
           }
-          if (consumed && !(block= allocate()))
+          if (!block && !(block= allocate()))
             goto next;
         }
 
@@ -2148,7 +2150,7 @@ buf_zip_decompress(
 
 	ut_ad(block->zip_size());
 	ut_a(block->page.id().space() != 0);
-	ut_ad(mach_read_from_4(frame + FIL_PAGE_OFFSET)
+	ut_a(mach_read_from_4(frame + FIL_PAGE_OFFSET)
               == block->page.id().page_no());
 
 	if (UNIV_UNLIKELY(check && !page_zip_verify_checksum(frame, size))) {
@@ -3505,7 +3507,7 @@ ATTRIBUTE_COLD void buf_pool_t::clear_hash_index()
       /* Another thread may have set the state to
       REMOVE_HASH in buf_LRU_block_remove_hashed().
 
-      The state change in buf_pool_t::realloc() is not observable
+      The state change in buf_pool_t::resize() is not observable
       here, because in that case we would have !block->index.
 
       In the end, the entire adaptive hash index will be removed. */
