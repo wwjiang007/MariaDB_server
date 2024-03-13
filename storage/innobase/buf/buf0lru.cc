@@ -759,10 +759,10 @@ bool buf_LRU_free_page(buf_page_t *bpage, bool zip)
 		    || !buf_pool.is_uncompressed(bpage)) {
 			break;
 		}
+		mysql_mutex_lock(&buf_pool.flush_list_mutex);
 relocate_compressed:
 		b = static_cast<buf_page_t*>(ut_zalloc_nokey(sizeof *b));
 		ut_a(b);
-		mysql_mutex_lock(&buf_pool.flush_list_mutex);
 		new (b) buf_page_t(*bpage);
 		{
 			ut_d(uint32_t s=) b->fix();
@@ -781,7 +781,12 @@ func_exit:
 			hash_lock.unlock();
 			return(false);
 		}
-		goto relocate_compressed;
+		mysql_mutex_lock(&buf_pool.flush_list_mutex);
+		if (!bpage->can_relocate()) {
+			goto relocate_compressed;
+		}
+		mysql_mutex_unlock(&buf_pool.flush_list_mutex);
+		goto func_exit;
 	}
 
 	mysql_mutex_assert_owner(&buf_pool.mutex);
