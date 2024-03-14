@@ -1256,22 +1256,21 @@ static void buf_flush_discard_page(buf_page_t *bpage)
 
 /** Flush dirty blocks from the end buf_pool.LRU,
 and move clean blocks to buf_pool.free.
-@param max    maximum number of blocks to flush
-@param n      counts of flushed and evicted pages */
-static void buf_flush_LRU_list_batch(ulint max, flush_counters_t *n)
+@param max        maximum number of blocks to flush
+@param n          counts of flushed and evicted pages
+@param shrinking  buf_pool.is_shrinking() */
+static void buf_flush_LRU_list_batch(ulint max, flush_counters_t *n,
+                                     size_t shrinking)
 {
   ulint scanned= buf_pool.lazy_allocate_size();
-  size_t shrinking= buf_pool.is_shrinking();
   ulint free_limit= srv_LRU_scan_depth + shrinking;
 
-  if (scanned >= free_limit)
-  {
-    if (UNIV_LIKELY(!shrinking))
-      return;
-    free_limit= shrinking;
-  }
-  else
+  if (scanned < free_limit)
     free_limit-= scanned;
+  else if (UNIV_LIKELY(!shrinking))
+    return;
+  else
+    free_limit= shrinking;
 
   scanned= 0;
 
@@ -1282,13 +1281,30 @@ static void buf_flush_LRU_list_batch(ulint max, flush_counters_t *n)
   static_assert(FIL_NULL > SRV_TMP_SPACE_ID, "consistency");
   static_assert(FIL_NULL > SRV_SPACE_ID_UPPER_BOUND, "consistency");
 
-  for (buf_page_t *bpage= UT_LIST_GET_LAST(buf_pool.LRU);
-       bpage &&
-       ((UT_LIST_GET_LEN(buf_pool.LRU) > BUF_LRU_MIN_LEN &&
-         UT_LIST_GET_LEN(buf_pool.free) < free_limit) ||
-        recv_recovery_is_on());
+  for (buf_page_t *bpage= UT_LIST_GET_LAST(buf_pool.LRU); bpage;
        ++scanned, bpage= buf_pool.lru_hp.get())
   {
+    if (UT_LIST_GET_LEN(buf_pool.LRU) <= BUF_LRU_MIN_LEN ||
+        UT_LIST_GET_LEN(buf_pool.free) >= free_limit)
+    {
+      if (UNIV_UNLIKELY(shrinking))
+      {
+      loop:
+        auto i= buf_pool.LRU_shrink(bpage);
+        if (!i)
+          break;
+        if (i < 0)
+        {
+          bpage= UT_LIST_GET_PREV(LRU, bpage);
+          if (bpage)
+            goto loop;
+          break;
+        }
+      }
+      else if (!recv_recovery_is_on())
+        break;
+    }
+
     buf_page_t *prev= UT_LIST_GET_PREV(LRU, bpage);
     buf_pool.lru_hp.set(prev);
     auto state= bpage->state();
@@ -1410,11 +1426,12 @@ Whether LRU or unzip_LRU is used depends on the state of the system.
 @param n      counts of flushed and evicted pages */
 static void buf_do_LRU_batch(ulint max, flush_counters_t *n)
 {
-  if (buf_LRU_evict_from_unzip_LRU())
+  const size_t shrinking= buf_pool.is_shrinking();
+  if (!shrinking && buf_LRU_evict_from_unzip_LRU())
     buf_free_from_unzip_LRU_list_batch();
   n->evicted= 0;
   n->flushed= 0;
-  buf_flush_LRU_list_batch(max, n);
+  buf_flush_LRU_list_batch(max, n, shrinking);
 
   mysql_mutex_assert_owner(&buf_pool.mutex);
   buf_lru_freed_page_count+= n->evicted;

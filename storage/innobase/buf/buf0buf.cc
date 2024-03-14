@@ -952,19 +952,6 @@ buf_block_t *buf_pool_t::get_nth_page(size_t pos) const
     (memory + block_descriptors_in_bytes(pos));
 }
 
-#ifdef UNIV_DEBUG
-const buf_block_t *buf_pool_t::contains_zip(const void *data) const
-{
-  for (size_t i= 0; i < n_blocks; i++)
-  {
-    const buf_block_t *block= get_nth_page(i);
-    if (block->page.zip.data == data)
-      return block;
-  }
-  return nullptr;
-}
-#endif
-
 /** Lazily initialize a block if one is available.
 @return freshly initialized buffer block
 @retval if all of the buffer pool has been initialized */
@@ -1368,6 +1355,19 @@ ATTRIBUTE_COLD bool buf_pool_t::withdraw(buf_page_t &bpage)
   return true;
 }
 
+ATTRIBUTE_COLD int buf_pool_t::LRU_shrink(buf_page_t *bpage)
+{
+  if (UNIV_UNLIKELY(!is_shrinking()))
+    return 0;
+  if (bpage >= first_to_withdraw &&
+      reinterpret_cast<byte*>(bpage) <= memory + size_in_bytes_max);
+  else if (bpage->zip.data &&
+           will_be_withdrawn(bpage->zip.data, size_in_bytes_requested));
+  else
+    return -1;
+  return 1;
+}
+
 ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
 {
   ut_ad(this == &buf_pool);
@@ -1487,16 +1487,17 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
   }
   else
   {
+    const buf_page_t * const end= &get_nth_page(n_blocks_alloc_new)->page;
     n_blocks_alloc_usable= n_blocks_alloc_new;
     n_blocks_to_withdraw= size_t(n_blocks_removed);
-    first_to_withdraw= &get_nth_page(n_blocks_alloc_new)->page;
+    first_to_withdraw= end;
     size_in_bytes_requested= size;
     mysql_mutex_unlock(&LOCK_global_system_variables);
 
 #ifdef BTR_CUR_HASH_ADAPT
-    mysql_mutex_unlock(&buf_pool.mutex);
+    mysql_mutex_unlock(&mutex);
     ahi_disabled= btr_search_disable();
-    mysql_mutex_lock(&buf_pool.mutex);
+    mysql_mutex_lock(&mutex);
 #endif /* BTR_CUR_HASH_ADAPT */
 
     time_t last_message= 0;
@@ -1550,7 +1551,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
 
       next= UT_LIST_GET_NEXT(list, b);
 
-      if (b >= first_to_withdraw)
+      if (b >= end)
       {
         UT_LIST_REMOVE(free, b);
         b->lock.free();
@@ -1588,13 +1589,13 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
         case 0:
           break;
         default:
-          mysql_mutex_lock(&buf_pool.flush_list_mutex);
+          mysql_mutex_lock(&flush_list_mutex);
           switch (ut_d(lsn_t om=) b->oldest_modification()) {
           case 1:
             delete_from_flush_list(b);
             /* fall through */
           case 0:
-            mysql_mutex_unlock(&buf_pool.flush_list_mutex);
+            mysql_mutex_unlock(&flush_list_mutex);
             break;
           default:
             ut_ad(om != 2);
@@ -1630,7 +1631,7 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
             goto next;
         }
 
-        if (!is_uncompressed(b) || b < first_to_withdraw)
+        if (!is_uncompressed(b) || b < end)
           goto next;
 
         ut_ad(is_uncompressed_current(b));
@@ -1661,12 +1662,12 @@ ATTRIBUTE_COLD void buf_pool_t::resize(size_t size, THD *thd)
 
       /* relocate page_hash */
       ut_ad(b == page_hash.get(id, chain));
-      buf_pool.page_hash.replace(chain, b, &block->page);
+      page_hash.replace(chain, b, &block->page);
 
       if (b->zip.data)
       {
         ut_ad(mach_read_from_4(b->zip.data + FIL_PAGE_OFFSET) == id.page_no());
-        ut_d(b->zip.data= nullptr); /* silence contains_zip() */
+        b->zip.data= nullptr;
         /* relocate unzip_LRU list */
         buf_block_t *old_block= reinterpret_cast<buf_block_t*>(b);
         ut_ad(old_block->in_unzip_LRU_list);
@@ -2150,7 +2151,7 @@ buf_zip_decompress(
 
 	ut_ad(block->zip_size());
 	ut_a(block->page.id().space() != 0);
-	ut_a(mach_read_from_4(frame + FIL_PAGE_OFFSET)
+	ut_ad(mach_read_from_4(frame + FIL_PAGE_OFFSET)
               == block->page.id().page_no());
 
 	if (UNIV_UNLIKELY(check && !page_zip_verify_checksum(frame, size))) {

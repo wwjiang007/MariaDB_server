@@ -162,6 +162,19 @@ buf_buddy_get(
 }
 
 #ifdef UNIV_DEBUG
+const buf_block_t *buf_pool_t::contains_zip(const void *data, ulong shift)const
+{
+  const size_t d= size_t(data) >> shift;
+
+  for (size_t i= 0; i < n_blocks; i++)
+  {
+    const buf_block_t *block= get_nth_page(i);
+    if (size_t(block->page.zip.data) >> shift == d)
+      return block;
+  }
+  return nullptr;
+}
+
 /** Validate a given zip_free list. */
 struct	CheckZipFree {
 	CheckZipFree(ulint i) : m_i(i) {}
@@ -257,13 +270,10 @@ buf_buddy_is_free(
 /** Add a block to the head of the appropriate buddy free list.
 @param[in,out]	buf		block to be freed
 @param[in]	i		index of buf_pool.zip_free[] */
-UNIV_INLINE
-void
-buf_buddy_add_to_free(buf_buddy_free_t* buf, ulint i)
+static void buf_buddy_add_to_free(buf_buddy_free_t *buf, ulint i)
 {
 	mysql_mutex_assert_owner(&buf_pool.mutex);
 	ut_ad(buf_pool.zip_free[i].start != buf);
-
 	buf_buddy_stamp_free(buf, i);
 	UT_LIST_ADD_FIRST(buf_pool.zip_free[i], buf);
 	ut_d(buf_buddy_list_validate(i));
@@ -272,9 +282,7 @@ buf_buddy_add_to_free(buf_buddy_free_t* buf, ulint i)
 /** Remove a block from the appropriate buddy free list.
 @param[in,out]	buf		block to be freed
 @param[in]	i		index of buf_pool.zip_free[] */
-UNIV_INLINE
-void
-buf_buddy_remove_from_free(buf_buddy_free_t* buf, ulint i)
+static void buf_buddy_remove_from_free(buf_buddy_free_t *buf, ulint i)
 {
 	mysql_mutex_assert_owner(&buf_pool.mutex);
 	ut_ad(buf_buddy_check_free(buf, i));
@@ -309,6 +317,7 @@ static buf_buddy_free_t* buf_buddy_alloc_zip(ulint i)
 
 	if (buf) {
 		buf_buddy_remove_from_free(buf, i);
+		ut_ad(!buf_pool.contains_zip(buf, BUF_BUDDY_LOW_SHIFT + i));
 	} else if (i + 1 < BUF_BUDDY_SIZES) {
 		/* Attempt to split. */
 		buf = buf_buddy_alloc_zip(i + 1);
@@ -318,7 +327,6 @@ static buf_buddy_free_t* buf_buddy_alloc_zip(ulint i)
 				reinterpret_cast<buf_buddy_free_t*>(
 					reinterpret_cast<byte*>(buf)
 					+ (BUF_BUDDY_LOW << i));
-			ut_ad(!buf_pool.contains_zip(buddy));
 			buf_buddy_add_to_free(buddy, i);
 		}
 	}
@@ -350,6 +358,7 @@ static void buf_buddy_block_free(void *buf)
   buf_block_t *block= buf_pool.block_from(buf);
   ut_ad(block->page.state() == buf_page_t::MEMORY);
   ut_ad(block->page.frame() == buf);
+  ut_ad(!buf_pool.contains_zip(buf, srv_page_size_shift));
   ut_d(memset(buf, 0, srv_page_size));
   MEM_UNDEFINED(buf, srv_page_size);
   buf_LRU_block_free_non_file_page(block);
@@ -373,24 +382,19 @@ buf_buddy_block_register(
 /** Allocate a block from a bigger object.
 @param[in]	buf		a block that is free to use
 @param[in]	i		index of buf_pool.zip_free[]
-@param[in]	j		size of buf as an index of buf_pool.zip_free[]
 @return allocated block */
-static
-void*
-buf_buddy_alloc_from(void* buf, ulint i, ulint j)
+static void *buf_buddy_alloc_from(void *buf, ulint i)
 {
-	ulint	offs	= BUF_BUDDY_LOW << j;
-	ut_ad(j <= BUF_BUDDY_SIZES);
 	ut_ad(i >= buf_buddy_get_slot(UNIV_ZIP_SIZE_MIN));
-	ut_ad(j >= i);
-	ut_ad(!ut_align_offset(buf, offs));
+	ut_ad(i <= BUF_BUDDY_SIZES);
+	ut_ad(!ut_align_offset(buf, srv_page_size));
+	ut_ad(!buf_pool.contains_zip(buf, srv_page_size));
 
 	/* Add the unused parts of the block to the free lists. */
-	while (j > i) {
+	for (ulint j = BUF_BUDDY_SIZES, offs = srv_page_size; j-- > i; ) {
 		buf_buddy_free_t*	zip_buf;
 
 		offs >>= 1;
-		j--;
 
 		zip_buf = reinterpret_cast<buf_buddy_free_t*>(
 			reinterpret_cast<byte*>(buf) + offs);
@@ -438,7 +442,7 @@ alloc_big:
 	buf_buddy_block_register(block);
 
 	block = reinterpret_cast<buf_block_t*>(
-		buf_buddy_alloc_from(block->page.frame(), i, BUF_BUDDY_SIZES));
+		buf_buddy_alloc_from(block->page.frame(), i));
 
 func_exit:
 	buf_pool.buddy_stat[i].used++;
@@ -577,7 +581,7 @@ recombine:
 
 	ut_ad(i < BUF_BUDDY_SIZES);
 	ut_ad(buf == ut_align_down(buf, BUF_BUDDY_LOW << i));
-	ut_ad(!buf_pool.contains_zip(buf));
+	ut_ad(!buf_pool.contains_zip(buf, BUF_BUDDY_LOW_SHIFT + i));
 
 	/* Do not recombine blocks if there are few free blocks.
 	We may waste up to 15360*max_len bytes to free blocks
@@ -596,10 +600,9 @@ recombine:
 		/* The buddy is free: recombine */
 		buf_buddy_remove_from_free(buddy, i);
 buddy_is_free:
-		ut_ad(!buf_pool.contains_zip(buddy));
 		i++;
 		buf = ut_align_down(buf, BUF_BUDDY_LOW << i);
-
+		ut_ad(!buf_pool.contains_zip(buf, BUF_BUDDY_LOW_SHIFT + i));
 		goto recombine;
 
 	case BUF_BUDDY_STATE_USED:
@@ -641,6 +644,7 @@ func_exit:
 @param block uncompressed block for storage
 @return block
 @retval nullptr if the block was consumed */
+ATTRIBUTE_COLD
 buf_block_t *buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
 {
   ut_ad(bpage->zip.data);
@@ -660,7 +664,7 @@ buf_block_t *buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
   if (!dst)
   {
     buf_buddy_block_register(block);
-    dst= buf_buddy_alloc_from(block->page.frame(), i, BUF_BUDDY_SIZES);
+    dst= buf_buddy_alloc_from(block->page.frame(), i);
     ut_ad(dst);
     block= nullptr;
   }
@@ -670,7 +674,7 @@ buf_block_t *buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
   bpage->zip.data= static_cast<page_zip_t*>(dst);
   buf_pool.buddy_stat[i].relocated++;
 
-  for (bool combined= false;; combined= true)
+  for (;;)
   {
     MEM_UNDEFINED(src, BUF_BUDDY_LOW << i);
     ut_ad(i < BUF_BUDDY_SIZES);
@@ -680,14 +684,13 @@ buf_block_t *buf_buddy_shrink(buf_page_t *bpage, buf_block_t *block)
 
     if (buf_buddy_is_free(buddy, i) != BUF_BUDDY_STATE_FREE)
     {
-      if (combined)
-        buf_buddy_add_to_free(static_cast<buf_buddy_free_t*>(src), i);
+      ut_ad(!buf_pool.contains_zip(src, BUF_BUDDY_LOW_SHIFT + i));
+      buf_buddy_add_to_free(static_cast<buf_buddy_free_t*>(src), i);
       break;
     }
 
     /* The buddy is free: recombine */
     buf_buddy_remove_from_free(buddy, i);
-    ut_ad(!buf_pool.contains_zip(buddy));
     i++;
     src= ut_align_down(src, BUF_BUDDY_LOW << i);
     if (i == BUF_BUDDY_SIZES)
@@ -737,7 +740,6 @@ ATTRIBUTE_COLD void buf_buddy_condense_free(size_t size)
       ulint j= i;
     recombine:
       buf_buddy_remove_from_free(buddy, j);
-      ut_ad(!buf_pool.contains_zip(buddy));
       j++;
       buf= static_cast<buf_buddy_free_t*>
         (ut_align_down(buf, BUF_BUDDY_LOW << j));
@@ -754,6 +756,7 @@ ATTRIBUTE_COLD void buf_buddy_condense_free(size_t size)
       if (buf_buddy_is_free(buddy, j) == BUF_BUDDY_STATE_FREE)
         goto recombine;
 
+      ut_ad(!buf_pool.contains_zip(buf, BUF_BUDDY_LOW_SHIFT + j));
       buf_buddy_add_to_free(buf, j);
     }
   }

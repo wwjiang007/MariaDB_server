@@ -1288,9 +1288,10 @@ public:
 #ifdef UNIV_DEBUG
   /** Find a block that points to a ROW_FORMAT=COMPRESSED page
   @param data  pointer to the start of a ROW_FORMAT=COMPRESSED page frame
+  @param shift number of least significant address bits to ignore
   @return the block
   @retval nullptr  if not found */
-  const buf_block_t *contains_zip(const void *data) const;
+  const buf_block_t *contains_zip(const void *data, ulong shift= 0) const;
   /** Assert that all buffer pool pages are in a replaceable state */
   void assert_all_freed();
 #endif /* UNIV_DEBUG */
@@ -1476,6 +1477,13 @@ public:
     UT_LIST_REMOVE(LRU, bpage);
     return prev;
   }
+
+  /** Try to evict a block if needed during resize()
+  @param bpage     candidate for removal
+  @retval 0  if resize() is no longer in progress
+  @retval <0 if another block could be a candidate
+  @retval >0 if this block should be considered for eviction */
+  ATTRIBUTE_COLD int LRU_shrink(buf_page_t *bpage);
 
   /** Number of pages to read ahead */
   static constexpr uint32_t READ_AHEAD_PAGES= 64;
