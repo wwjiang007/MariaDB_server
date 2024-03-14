@@ -8889,7 +8889,7 @@ bool is_simple_order(ORDER *order)
   mark field for write before storing the generated value in it
 */
 #ifdef DBUG_ASSERT_EXISTS
-#define DBUG_FIX_WRITE_SET(f) bool _write_set_fixed= !bitmap_fast_test_and_set(write_set, (f)->field_index)
+#define DBUG_FIX_WRITE_SET(f) bool _write_set_fixed= !bitmap_test_and_set(write_set, (f)->field_index)
 #define DBUG_RESTORE_WRITE_SET(f) if (_write_set_fixed) bitmap_clear_bit(write_set, (f)->field_index)
 #else
 #define DBUG_FIX_WRITE_SET(f)

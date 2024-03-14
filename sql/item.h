@@ -4148,6 +4148,12 @@ public:
   Item_param(THD *thd, const LEX_CSTRING *name_arg,
              uint pos_in_query_arg, uint len_in_query_arg);
 
+  void cleanup() override
+  {
+    m_default_field= NULL;
+    Item::cleanup();
+  }
+
   Type type() const override
   {
     // Don't pretend to be a constant unless value for this item is set.
@@ -6083,6 +6089,8 @@ class Item_direct_view_ref :public Item_direct_ref
     if (!view->is_inner_table_of_outer_join() ||
         !(null_ref_table= view->get_real_join_table()))
       null_ref_table= NO_NULL_TABLE;
+    if (null_ref_table && null_ref_table != NO_NULL_TABLE)
+      set_maybe_null();
   }
 
   bool check_null_ref()
@@ -7985,7 +7993,7 @@ public:
 inline bool TABLE::mark_column_with_deps(Field *field)
 {
   bool res;
-  if (!(res= bitmap_fast_test_and_set(read_set, field->field_index)))
+  if (!(res= bitmap_test_and_set(read_set, field->field_index)))
   {
     if (field->vcol_info)
       mark_virtual_column_deps(field);
@@ -7997,7 +8005,7 @@ inline bool TABLE::mark_virtual_column_with_deps(Field *field)
 {
   bool res;
   DBUG_ASSERT(field->vcol_info);
-  if (!(res= bitmap_fast_test_and_set(read_set, field->field_index)))
+  if (!(res= bitmap_test_and_set(read_set, field->field_index)))
     mark_virtual_column_deps(field);
   return res;
 }

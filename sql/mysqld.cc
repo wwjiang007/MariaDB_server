@@ -302,7 +302,8 @@ static TYPELIB tc_heuristic_recover_typelib=
 };
 
 const char *first_keyword= "first";
-const char *my_localhost= "localhost", *delayed_user= "DELAYED";
+const char *my_localhost= "localhost",
+           *delayed_user= "delayed", *slave_user= "<replication_slave>";
 
 bool opt_large_files= sizeof(my_off_t) > 4;
 static my_bool opt_autocommit; ///< for --autocommit command-line option
@@ -3221,7 +3222,6 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
   sigset_t set;
   int sig;
   my_thread_init();				// Init new thread
-  DBUG_ENTER("signal_hand");
   signal_thread_in_use= 1;
 
   /*
@@ -3275,7 +3275,6 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
     {
       DBUG_PRINT("quit",("signal_handler: calling my_thread_end()"));
       my_thread_end();
-      DBUG_LEAVE;                               // Must match DBUG_ENTER()
       signal_thread_in_use= 0;
       pthread_exit(0);				// Safety
       return 0;                                 // Avoid compiler warnings
@@ -3793,20 +3792,35 @@ static void my_malloc_size_cb_func(long long size, my_bool is_thread_specific)
         thd->status_var.local_memory_used > (int64)thd->variables.max_mem_used &&
         likely(!thd->killed) && !thd->get_stmt_da()->is_set())
     {
-      /* Ensure we don't get called here again */
-      char buf[50], *buf2;
-      thd->set_killed(KILL_QUERY);
-      my_snprintf(buf, sizeof(buf), "--max-session-mem-used=%llu",
-                  thd->variables.max_mem_used);
-      if ((buf2= (char*) thd->alloc(256)))
-      {
-        my_snprintf(buf2, 256, ER_THD(thd, ER_OPTION_PREVENTS_STATEMENT), buf);
-        thd->set_killed(KILL_QUERY, ER_OPTION_PREVENTS_STATEMENT, buf2);
-      }
-      else
-      {
-        thd->set_killed(KILL_QUERY, ER_OPTION_PREVENTS_STATEMENT,
-                        "--max-session-mem-used");
+      /*
+        Ensure we don't get called here again.
+
+        It is not safe to wait for LOCK_thd_kill here, as we could be called
+        from almost any context. For example while LOCK_plugin is being held;
+        but THD::awake() locks LOCK_thd_kill and LOCK_plugin in the opposite
+        order (MDEV-33443).
+
+        So ignore the max_mem_used limit in the unlikely case we cannot obtain
+        LOCK_thd_kill here (the limit will be enforced on the next allocation).
+      */
+      if (!mysql_mutex_trylock(&thd->LOCK_thd_kill)) {
+        char buf[50], *buf2;
+        thd->set_killed_no_mutex(KILL_QUERY);
+        my_snprintf(buf, sizeof(buf), "--max-session-mem-used=%llu",
+                    thd->variables.max_mem_used);
+        if ((buf2= (char*) thd->alloc(256)))
+        {
+          my_snprintf(buf2, 256,
+                      ER_THD(thd, ER_OPTION_PREVENTS_STATEMENT), buf);
+          thd->set_killed_no_mutex(KILL_QUERY,
+                                   ER_OPTION_PREVENTS_STATEMENT, buf2);
+        }
+        else
+        {
+          thd->set_killed_no_mutex(KILL_QUERY, ER_OPTION_PREVENTS_STATEMENT,
+                          "--max-session-mem-used");
+        }
+        mysql_mutex_unlock(&thd->LOCK_thd_kill);
       }
     }
     DBUG_ASSERT((longlong) thd->status_var.local_memory_used >= 0 ||
@@ -4982,9 +4996,9 @@ static int init_server_components()
   proc_info_hook= set_thd_stage_info;
 
   /*
-￼    Print source revision hash, as one of the first lines, if not the
-￼    first in error log, for troubleshooting and debugging purposes
-￼  */
+    Print source revision hash, as one of the first lines, if not the
+    first in error log, for troubleshooting and debugging purposes
+  */
   if (!opt_help)
     sql_print_information("Starting MariaDB %s source revision %s as process %lu",
                           server_version, SOURCE_REVISION, (ulong) getpid());
@@ -5011,6 +5025,19 @@ static int init_server_components()
 #endif
 
   xid_cache_init();
+
+  /*
+    Do not open binlong when doing bootstrap.
+    This ensures that rpl_load_gtid_slave_state() will not fail with an error
+    as the mysql schema does not yet exists.
+    This also ensures that we don't get an empty binlog file if the user has
+    log-bin in his config files.
+  */
+  if (opt_bootstrap)
+  {
+    opt_bin_log= opt_bin_log_used= binlog_format_used= 0;
+    opt_log_slave_updates= 0;
+  }
 
   /* need to configure logging before initializing storage engines */
   if (!opt_bin_log_used && !WSREP_ON)

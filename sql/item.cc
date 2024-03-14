@@ -27,6 +27,7 @@
 #include "sp_rcontext.h"
 #include "sp_head.h"
 #include "sql_trigger.h"
+#include "sql_parse.h"
 #include "sql_select.h"
 #include "sql_show.h"                           // append_identifier
 #include "sql_view.h"                           // VIEW_ANY_SQL
@@ -494,7 +495,10 @@ void Item::print_parenthesised(String *str, enum_query_type query_type,
   bool need_parens= precedence() < parent_prec;
   if (need_parens)
     str->append('(');
-  print(str, query_type);
+  if (check_stack_overrun(current_thd, STACK_MIN_SIZE, NULL))
+    str->append(STRING_WITH_LEN("<STACK OVERRUN>"));
+  else
+    print(str, query_type);
   if (need_parens)
     str->append(')');
 }
@@ -885,7 +889,7 @@ bool Item_field::register_field_in_read_map(void *arg)
     return res;
 
   if (field->vcol_info &&
-      !bitmap_fast_test_and_set(field->table->read_set, field->field_index))
+      !bitmap_test_and_set(field->table->read_set, field->field_index))
   {
     res= field->vcol_info->expr->walk(&Item::register_field_in_read_map,1,arg);
   }
@@ -973,7 +977,7 @@ bool Item_field::update_vcol_processor(void *arg)
 {
   MY_BITMAP *map= (MY_BITMAP *) arg;
   if (field->vcol_info &&
-      !bitmap_fast_test_and_set(map, field->field_index))
+      !bitmap_test_and_set(map, field->field_index))
   {
     field->vcol_info->expr->walk(&Item::update_vcol_processor, 0, arg);
     field->vcol_info->expr->save_in_field(field, 0);
@@ -5188,9 +5192,19 @@ bool Item_param::assign_default(Field *field)
   }
 
   if (m_default_field->default_value)
-    m_default_field->set_default();
-
-  return field_conv(field, m_default_field);
+  {
+    return m_default_field->default_value->expr->save_in_field(field, 0);
+  }
+  else if (m_default_field->is_null())
+  {
+    field->set_null();
+    return false;
+  }
+  else
+  {
+    field->set_notnull();
+    return field_conv(field, m_default_field);
+  }
 }
 
 
@@ -6303,7 +6317,7 @@ bool Item_field::fix_fields(THD *thd, Item **reference)
       current_bitmap= table->write_set;
       other_bitmap=   table->read_set;
     }
-    if (!bitmap_fast_test_and_set(current_bitmap, field->field_index))
+    if (!bitmap_test_and_set(current_bitmap, field->field_index))
     {
       if (!bitmap_is_set(other_bitmap, field->field_index))
       {

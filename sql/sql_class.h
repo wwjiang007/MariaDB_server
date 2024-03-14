@@ -719,7 +719,7 @@ typedef struct system_variables
   ulonglong max_mem_used;
   /*
     A bitmap of OPTIMIZER_ADJ_* flags (defined in sql_priv.h).
-    See sql_vars.cc:adjust_secondary_key_cost for symbolic names.
+    See sys_vars.cc:adjust_secondary_key_cost for symbolic names.
   */
   ulonglong optimizer_adjust_secondary_key_costs;
 
@@ -1577,6 +1577,8 @@ public:
   */
   bool check_access(const privilege_t want_access, bool match_any = false);
   bool is_priv_user(const char *user, const char *host);
+  bool is_user_defined() const
+    { return user && user != delayed_user && user != slave_user; };
 };
 
 

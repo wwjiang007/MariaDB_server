@@ -1184,6 +1184,7 @@ inline void log_t::resize_write(lsn_t lsn, const byte *end, size_t len,
 std::pair<lsn_t,mtr_t::page_flush_ahead>
 mtr_t::finish_write(size_t len)
 {
+  ut_ad(log_sys.is_latest());
   ut_ad(!recv_no_log_write);
   ut_ad(is_logged());
 #ifndef SUX_LOCK_GENERIC

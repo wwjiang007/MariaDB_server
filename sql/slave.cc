@@ -1340,6 +1340,8 @@ static bool io_slave_killed(Master_info* mi)
   DBUG_ENTER("io_slave_killed");
 
   DBUG_ASSERT(mi->slave_running); // tracking buffer overrun
+  if (mi->abort_slave || mi->io_thd->killed)
+    DBUG_PRINT("info", ("killed"));
   DBUG_RETURN(mi->abort_slave || mi->io_thd->killed);
 }
 
@@ -3557,6 +3559,7 @@ static int init_slave_thread(THD* thd, Master_info *mi,
   }
 
   thd->security_ctx->skip_grants();
+  thd->security_ctx->user=(char*) slave_user;
   thd->slave_thread= 1;
   thd->connection_name= mi->connection_name;
   thd->variables.sql_log_slow= !MY_TEST(thd->variables.log_slow_disabled_statements & LOG_SLOW_DISABLE_SLAVE);
