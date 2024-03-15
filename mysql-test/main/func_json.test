@@ -1116,5 +1116,12 @@ select json_arrayagg('ä'), json_objectagg(1, 'ä');
 --enable_service_connection
 
 --echo #
+--echo # MDEV-22141: JSON_REMOVE returns NULL on valid arguments
+--echo #
+
+SELECT JSON_REMOVE('{"A": { "B": 1 }}', '$.A.B.C.D');
+
+
+--echo #
 --echo # End of 10.5 tests
 --echo #

@@ -1690,5 +1690,11 @@ select json_arrayagg('ä'), json_objectagg(1, 'ä');
 json_arrayagg('ä')	json_objectagg(1, 'ä')
 ["ä"]	{"1":"ä"}
 #
+# MDEV-22141: JSON_REMOVE returns NULL on valid arguments
+#
+SELECT JSON_REMOVE('{"A": { "B": 1 }}', '$.A.B.C.D');
+JSON_REMOVE('{"A": { "B": 1 }}', '$.A.B.C.D')
+{"A": {"B": 1}}
+#
 # End of 10.5 tests
 #

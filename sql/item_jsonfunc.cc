@@ -3317,6 +3317,12 @@ String *Item_func_json_remove::val_str(String *str)
     {
       if (je.s.error)
         goto js_error;
+      else
+      {
+        rem_start= (const char *) (je.s.c_str);
+        rem_end= (const char*)(je.s.str_end);
+        goto here;
+      }
     }
 
     if (json_read_value(&je))
@@ -3394,6 +3400,7 @@ v_found:
     rem_end= (je.state == JST_VALUE && n_item == 0) ? 
       (const char *) je.s.c_str : (const char *) (je.s.c_str - je.sav_c_len);
 
+here:
     str->length(0);
 
     if (append_simple(str, js->ptr(), rem_start - js->ptr()) ||

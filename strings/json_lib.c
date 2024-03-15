@@ -1381,7 +1381,7 @@ int json_find_path(json_engine_t *je,
       DBUG_ASSERT(0);
       break;
     };
-  } while (json_scan_next(je) == 0);
+  } while (je->stack_p && json_scan_next(je) == 0);
 
   /* No luck. */
   return 1;
