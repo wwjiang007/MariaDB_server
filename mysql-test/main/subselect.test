@@ -6394,3 +6394,20 @@ DROP TABLE t1, x;
 --echo #
 --echo # End of 10.4 tests
 --echo #
+
+--echo #
+--echo # MDEV-32583 UUID() should be treated as stochastic for the purposes of
+--echo # forcing query materialization
+--echo #
+
+--source include/have_sequence.inc
+create table t1 as WITH cte AS (SELECT UUID() as r  FROM seq_1_to_10)
+SELECT r as r1, r FROM cte;
+select count(*) from t1 where r1!=r;
+drop table t1;
+
+--echo #
+--echo # End of 10.5 tests
+--echo #
+
+

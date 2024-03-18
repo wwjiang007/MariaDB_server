@@ -7540,3 +7540,16 @@ DROP TABLE t1, x;
 #
 # End of 10.4 tests
 #
+#
+# MDEV-32583 UUID() should be treated as stochastic for the purposes of
+# forcing query materialization
+#
+create table t1 as WITH cte AS (SELECT UUID() as r  FROM seq_1_to_10)
+SELECT r as r1, r FROM cte;
+select count(*) from t1 where r1!=r;
+count(*)
+0
+drop table t1;
+#
+# End of 10.5 tests
+#
