@@ -1470,6 +1470,18 @@ long long spider_direct_sql_body(
   TABLE_LIST *real_table_list_last = NULL;
   uint use_real_table = 0;
   DBUG_ENTER("spider_direct_sql_body");
+  if (!spider_hton_ptr)
+  {
+    /*
+      Ideally we want to emit an error so that the user gets a better
+      idea why it failed:
+      my_error(ER_PLUGIN_IS_NOT_LOADED, MYF(0), "SPIDER");
+      But this won't work as the my_error function would be pointing
+      to an invalid address.
+    */
+    error_num= ER_PLUGIN_IS_NOT_LOADED;
+    goto error;
+  }
   SPIDER_BACKUP_DASTATUS;
   if (!(direct_sql = (SPIDER_DIRECT_SQL *)
     spider_bulk_malloc(spider_current_trx, SPD_MID_DIRECT_SQL_BODY_1, MYF(MY_WME | MY_ZEROFILL),
