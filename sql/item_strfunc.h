@@ -1676,7 +1676,6 @@ public:
   table_map not_null_tables() const { return 0; }
   Item* propagate_equal_fields(THD *thd, const Context &ctx, COND_EQUAL *cond)
   { return this; }
-  bool const_item() const { return true; }
 };
 
 
