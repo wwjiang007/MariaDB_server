@@ -5320,6 +5320,9 @@ func_exit:
   else if (index->is_primary() && table->persistent_autoinc)
     btr_write_autoinc(index, table->autoinc - 1);
   err= btr_bulk.finish(err);
+  if (err == DB_SUCCESS && index->is_clust())
+    table->stat_n_rows= (file && file->fd != OS_FILE_CLOSED)
+                        ? file->n_rec : buf.n_tuples;
   return err;
 }
 
@@ -5333,8 +5336,19 @@ dberr_t row_merge_bulk_t::write_to_table(dict_table_t *table, trx_t *trx)
       continue;
 
     dberr_t err= write_to_index(i, trx);
-    if (err != DB_SUCCESS)
+    switch(err)
+    {
+    default:
+      if (table->skip_alter_undo)
+        my_error_innodb(err, table->name.m_name, table->flags);
+err_exit:
       return err;
+    case DB_SUCCESS:
+      break;
+    case DB_DUPLICATE_KEY:
+      trx->error_info = index;
+      goto err_exit;
+    }
     i++;
   }
 
@@ -5354,8 +5368,6 @@ dberr_t trx_mod_table_time_t::write_bulk(dict_table_t *table, trx_t *trx)
 dberr_t trx_t::bulk_insert_apply_low()
 {
   ut_ad(bulk_insert);
-  ut_ad(!check_unique_secondary);
-  ut_ad(!check_foreigns);
   dberr_t err;
   for (auto& t : mod_tables)
     if (t.second.is_bulk_insert())
