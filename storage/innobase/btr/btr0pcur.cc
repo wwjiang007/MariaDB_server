@@ -253,6 +253,7 @@ struct optimistic_latch_leaves
   }
 };
 
+
 /** Restores the stored position of a persistent cursor bufferfixing
 the page and obtaining the specified latches. If the cursor position
 was saved when the
@@ -453,8 +454,22 @@ btr_pcur_t::restore_position(ulint restore_latch_mode, const char *file,
 
 			return SAME_ALL;
 		}
-		if (n_matched_fields >= index->n_uniq)
-			ret_val= SAME_UNIQ;
+		if (n_matched_fields >= index->n_uniq) {
+			/* Unique indexes can contain "NULL" keys, and if all
+			unique fields are NULL and not all tuple
+			fields match to record fields, then treat it as if
+			restored cursor position points to the record with
+			not the same unique key. */
+			if (!index->n_nullable)
+			  ret_val= SAME_UNIQ;
+			else
+			  for (uint i= 0; i < index->n_uniq; ++i)
+			    if (!dfield_is_null(
+				  dtuple_get_nth_field(tuple, i))) {
+			      ret_val= SAME_UNIQ;
+			      break;
+			  }
+		}
 	}
 
 	mem_heap_free(heap);
