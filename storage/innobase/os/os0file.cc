@@ -678,6 +678,8 @@ ssize_t
 SyncFileIO::execute(const IORequest& request)
 {
 	ssize_t	n_bytes;
+	ut_ad(m_n > 0);
+	ut_ad(m_n <= innodb_log_buffer_size_max);
 
 	if (request.is_read()) {
 #ifdef _WIN32

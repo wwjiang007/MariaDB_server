@@ -33,6 +33,17 @@ Created 12/9/1995 Heikki Tuuri
 #include "srw_lock.h"
 #include <string>
 
+/* According to Linux "man 2 read" and "man 2 write" this is the
+maximum size of a read or write request, both on 32-bit and 64-bit
+systems.
+
+On FreeBSD, the limit is close to the Linux one, INT_MAX.
+
+On Microsoft Windows, the limit is 4 GiB - 1.
+
+On other systems, the limit typically is up to SSIZE_T_MAX. */
+static constexpr unsigned innodb_log_buffer_size_max= 0x7ffff000;
+
 using st_::span;
 
 static const char LOG_FILE_NAME_PREFIX[] = "ib_logfile";
@@ -187,7 +198,7 @@ public:
   /** number of append_prepare_wait(); protected by lock_lsn() or lsn_lock */
   size_t waits;
   /** innodb_log_buffer_size (size of buf,flush_buf if !is_pmem(), in bytes) */
-  size_t buf_size;
+  unsigned buf_size;
   /** log file size in bytes, including the header */
   lsn_t file_size;
 
