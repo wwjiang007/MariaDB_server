@@ -9425,7 +9425,10 @@ ha_innobase::rnd_pos(
 	/* Note that we assume the length of the row reference is fixed
 	for the table, and it is == ref_length */
 
+        bool old_rowid_filter= rowid_filter_is_active;
+        rowid_filter_is_active= false;
 	int	error = index_read(buf, pos, (uint)ref_length, HA_READ_KEY_EXACT);
+        rowid_filter_is_active= old_rowid_filter;
 
 	if (error != 0) {
 		DBUG_PRINT("error", ("Got error: %d", error));
