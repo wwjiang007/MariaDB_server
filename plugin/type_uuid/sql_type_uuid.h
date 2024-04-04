@@ -345,4 +345,73 @@ public:
 };
 
 
+/*
+  Implements Universal Unique Identifiers version 4, as described in
+  draft-ietf-uuidrev-rfc4122bis-14.
+
+  Author: StefanoPetrilli <stefanop_1999@hotmail.it>
+
+    Field                       Octet #          Note
+  random_a                       0-5     Random CSPRNG 48 bits.
+  ver                            6       The 4 bit version field, set to
+                                         0b0100. Occupies bits 48 through 51 of
+                                         octet 6.
+  random_b                       6-7     Random CSPRNG 12 bits.
+  var                            8       The 2 bit variant field, set to 0b10.
+                                         Occupies bits 64 and 65 of octet 8.
+  random_c                       8-15    Random CSPRNG 62 bits.
+
+  The structure of an UUIDv4 is: llllllll-mmmm-Vhhh-vsss-nnnnnnnnnnnn
+  The replacement of the version and variant field bits results in 122
+  bits of random data.
+*/
+
+class UUIDv4: public Type_handler_fbt<UUID<0>, Type_collection_uuid>::Fbt
+{
+  static constexpr char UUID_VERSION()      { return 0x40; }
+  static constexpr char UUID_VERSION_MASK() { return 0x0F; }
+  static constexpr char UUID_VARIANT()      { return 0x80; }
+  static constexpr char UUID_VARIANT_MASK() { return 0x3F; }
+
+  static void inject_version_and_variant(char *to)
+  {
+    to[6]= ((to[6] & UUID_VERSION_MASK()) | UUID_VERSION());
+    to[8]= ((to[8] & UUID_VARIANT_MASK()) | UUID_VARIANT());
+  }
+
+  static void construct(char *to)
+  {
+    if (my_random_bytes((uchar*) to, 16) != MY_AES_OK)
+    {
+      push_warning_printf(current_thd, Sql_condition::WARN_LEVEL_WARN,
+                          ER_UNKNOWN_ERROR,
+                          "Failed to generate a random value for UUIDv4");
+      /*
+        This is very unlikely situation when my_random_bytes() fails.
+        Let's fallback to UUIDv1 generation.
+        Note, the version and the variant will be changed by
+        inject_version_and_variant() to make it look like UUIDv4.
+      */
+      my_uuid((uchar*) to);
+    }
+    inject_version_and_variant(to);
+  }
+
+public:
+
+  UUIDv4()
+  {
+    construct(m_buffer);
+  }
+  static bool construct_native(Native *to)
+  {
+    to->alloc(MY_UUID_SIZE);
+    to->length(MY_UUID_SIZE);
+    construct((char*)to->ptr());
+    return 0;
+  }
+
+};
+
+
 #endif // SQL_TYPE_UUID_INCLUDED

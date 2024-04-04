@@ -87,8 +87,16 @@ public:
     static LEX_CSTRING name= {STRING_WITH_LEN("uuidv4") };
     return name;
   }
-  String *val_str(String *) override;
-  bool val_native(THD *thd, Native *to) override;
+  String *val_str(String *str) override
+  {
+    DBUG_ASSERT(fixed());
+    return UUIDv4().to_string(str) ? NULL : str;
+  }
+  bool val_native(THD *thd, Native *to) override
+  {
+    DBUG_ASSERT(fixed());
+    return UUIDv4::construct_native(to);
+  }
   Item *get_copy(THD *thd) override
   { return get_item_copy<Item_func_uuid_v4>(thd, this); }
 };
