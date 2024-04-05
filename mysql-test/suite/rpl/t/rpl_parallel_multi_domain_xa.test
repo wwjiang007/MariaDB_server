@@ -87,6 +87,64 @@ while ($mode)
   --dec $mode
 }
 
+
+# Generations test.
+# Create few ranges of XAP groups length of greater than
+#   3 * slave_parallel_threads + 1
+# terminated upon each range.
+--let $iter = 3
+--let $generation_len = @@global.slave_parallel_threads
+--let $domain_num = 3
+--disable_query_log
+--connection master
+while ($iter)
+{
+  --let $k = `select 3 * 3 * $generation_len`
+	--let $_k = $k
+  while ($k)
+  {
+		--source include/count_sessions.inc
+		--connect(con$k,localhost,root,,)
+    #
+    # create XA events alternating gtid domains to run them in parallel on slave.
+    #
+		--let $domain_id = `SELECT $k % $domain_num`
+		--eval set @@gtid_domain_id = $domain_id
+		--eval XA START '$trx$k'
+		--eval   INSERT INTO t1 VALUES ($k + 1, $iter)
+		--eval XA END '$trx$k'
+		--eval XA PREPARE '$trx$k'
+
+		--disconnect con$k
+    --connection master
+    --source include/wait_until_count_sessions.inc
+
+		--dec $k
+  }
+
+	--connection master
+	--let $k = $_k
+  while ($k)
+	{
+		--let $term = COMMIT
+		--let $decision = `SELECT $k % 2`
+		if ($decision)
+		{
+			--let $term = ROLLBACK
+		}
+		--eval XA $term '$trx$k'
+	}
+	--dec $iter
+}
+--enable_query_log
+--source include/save_master_gtid.inc
+
+--connection slave
+SET @@global.slave_parallel_mode     = 'optimistic';
+--source include/start_slave.inc
+--source include/sync_with_master_gtid.inc
+
+
 #
 # Overall consistency check
 #

@@ -34,11 +34,14 @@ SET @@global.slave_parallel_mode     ='conservative';
 include/start_slave.inc
 include/sync_with_master_gtid.inc
 include/stop_slave.inc
+include/save_master_gtid.inc
+connection slave;
+SET @@global.slave_parallel_mode     = 'optimistic';
+include/start_slave.inc
+include/sync_with_master_gtid.inc
 include/diff_tables.inc [master:t1, slave:t1]
 connection slave;
 include/stop_slave.inc
-Warnings:
-Note	1255	Slave already has been stopped
 SET @@global.slave_parallel_mode           = @old_parallel_mode;
 SET @@global.slave_parallel_threads        = @old_parallel_threads;
 SET @@global.slave_domain_parallel_threads = @old_slave_domain_parallel_threads;
