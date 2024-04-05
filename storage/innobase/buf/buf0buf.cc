@@ -2871,12 +2871,6 @@ release_and_ignore_block:
 	} else {
 		switch (rw_latch) {
 		case RW_NO_LATCH:
-			/* Our caller is responsible for checking
-			block->page.is_freed(), that is, whether
-			buf_pool_t::corrupted_evict() had been called,
-			after acquiring the page latch, unless it is
-			known that the block was already successfully
-			loaded into the buffer pool. */
 			mtr->memo_push(block, MTR_MEMO_BUF_FIX);
 			return block;
 		case RW_S_LATCH:

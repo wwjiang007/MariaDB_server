@@ -259,10 +259,21 @@ static bool btr_pcur_optimistic_latch_leaves(btr_pcur_t *pcur,
     return false;
   }
 
-  buf_block_t *prev= nullptr;
-  if (left_page_no != FIL_NULL &&
-      !(prev= btr_block_get(*pcur->index(), left_page_no, mode, true, mtr)))
-    goto fail;
+  buf_block_t *prev;
+  if (left_page_no != FIL_NULL)
+  {
+    prev= buf_page_get_gen(page_id_t(pcur->old_page_id.space(),
+                                     left_page_no), block->zip_size(),
+                           mode, nullptr, BUF_GET_POSSIBLY_FREED, mtr);
+    if (!prev ||
+        page_is_comp(prev->page.frame) != page_is_comp(block->page.frame) ||
+        memcmp_aligned<2>(block->page.frame, prev->page.frame, 2) ||
+        memcmp_aligned<2>(block->page.frame + PAGE_HEADER + PAGE_INDEX_ID,
+                          prev->page.frame + PAGE_HEADER + PAGE_INDEX_ID, 8))
+      goto fail;
+  }
+  else
+    prev= nullptr;
 
   mtr->upgrade_buffer_fix(savepoint, mode);
 
